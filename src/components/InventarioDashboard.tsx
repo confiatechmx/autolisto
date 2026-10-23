@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { ConcurrencyService } from '@/services/concurrencyService';
 import { 
   Package, 
   Layers, 
@@ -206,25 +207,28 @@ export default function InventarioDashboard() {
     }
   };
 
-  // Quick stock entry add
+  // Quick stock entry add with atomic locking
   const handleAddStock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTire) return;
     setFormLoading(true);
     try {
-      const nextStock = selectedTire.stock_actual + quickStockAmount;
-      const { error } = await supabase
-        .from('inventario_llantas')
-        .update({ stock_actual: nextStock })
-        .eq('id', selectedTire.id);
+      const res = await ConcurrencyService.ajustarStock({
+        llantaId: selectedTire.id,
+        delta: quickStockAmount,
+        permitirNegativo: false,
+      });
 
-      if (error) throw error;
+      if (!res.success) {
+        alert(res.message || 'Error al actualizar existencia con bloqueo pesimista');
+        return;
+      }
 
       setIsStockModalOpen(false);
       await fetchInventory();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating stock:', err);
-      alert('Error al actualizar existencia');
+      alert('Error al actualizar existencia: ' + (err?.message || 'Error desconocido'));
     } finally {
       setFormLoading(false);
     }

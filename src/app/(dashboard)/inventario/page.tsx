@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useTenant } from "@/context/TenantContext";
+import { ConcurrencyService } from "@/services/concurrencyService";
 import { Modal } from "../../../components/ui/Modal";
 import { TireForm, TireRecord } from "../../../components/inventario/TireForm";
 
@@ -162,26 +163,30 @@ function InventarioContent() {
   }, [fetchInventory]);
 
   const handleAdjustStock = async (item: TireUI, delta: number) => {
-    const nextStock = Math.max(0, item.stock_actual + delta);
-    if (nextStock === item.stock_actual) return;
+    if (item.stock_actual + delta < 0) return;
 
-    // Optimistic update
+    // Optimistic UI mutation
+    const targetStock = item.stock_actual + delta;
     setInventory((prev) =>
-      prev.map((t) => (t.id === item.id ? { ...t, stock_actual: nextStock } : t))
+      prev.map((t) => (t.id === item.id ? { ...t, stock_actual: targetStock } : t))
     );
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("inventario_llantas_base")
-      .update({ stock_actual: nextStock })
-      .eq("id", item.id);
+    // Atomic locked adjustment on backend
+    const res = await ConcurrencyService.ajustarStock({
+      llantaId: item.id,
+      delta,
+      permitirNegativo: false,
+    });
 
-    if (error) {
-      console.error("Error updating stock:", error);
+    if (!res.success) {
+      alert(res.message || "Conflicto de stock al actualizar inventario");
+      await fetchInventory();
+      return;
+    }
+
+    if (typeof res.nuevo_stock === 'number') {
       setInventory((prev) =>
-        prev.map((t) =>
-          t.id === item.id ? { ...t, stock_actual: item.stock_actual } : t
-        )
+        prev.map((t) => (t.id === item.id ? { ...t, stock_actual: res.nuevo_stock! } : t))
       );
     }
   };

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useTenant } from "@/context/TenantContext";
+import { ConcurrencyService } from "@/services/concurrencyService";
 import { generatePaymentLink } from "@/app/actions/payments";
 import { calcularCuotasBNPL } from "@/lib/bnpl";
 import { ReceiptModal } from "@/components/caja/ReceiptModal";
@@ -369,14 +370,20 @@ export function OrderDetailsModal({ orderId, onClose, onUpdate }: OrderDetailsMo
 
   // Handlers for Order Header
   const handleUpdateStatus = async (newStatus: string) => {
-    const { error } = await supabase
-      .from("ordenes_servicio")
-      .update({ estado: newStatus })
-      .eq("id", orderId);
-    if (!error) {
-      setOrder((prev: any) => ({ ...prev, estado: newStatus }));
-      onUpdate();
+    const res = await ConcurrencyService.actualizarOrdenConcurrente({
+      ordenId: orderId,
+      expectedVersion: order?.version ?? 1,
+      payload: { estado: newStatus },
+    });
+    if (!res.success) {
+      if (res.conflict) {
+        alert(res.message || "Conflicto de concurrencia al actualizar estado");
+        await loadWorkspaceData();
+      }
+      return;
     }
+    setOrder((prev: any) => ({ ...prev, estado: newStatus, version: res.nuevo_version ?? ((prev.version || 1) + 1) }));
+    onUpdate();
   };
 
   const handleUpdateSubStatus = async (newSubStatus: string) => {
@@ -773,10 +780,11 @@ export function OrderDetailsModal({ orderId, onClose, onUpdate }: OrderDetailsMo
     if (!error) {
       const tire = detail.inventario_llantas;
       if (tire?.id) {
-        await supabase
-          .from("inventario_llantas_base")
-          .update({ stock_actual: Number(tire.stock_actual || 0) + Number(detail.cantidad || 1) })
-          .eq("id", tire.id);
+        await ConcurrencyService.ajustarStock({
+          llantaId: tire.id,
+          delta: Number(detail.cantidad || 1),
+          permitirNegativo: true,
+        });
       }
       const updatedDetalles = (order.cotizaciones?.detalles_cotizacion || []).filter(
         (d: any) => d.id !== detail.id

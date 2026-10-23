@@ -20,6 +20,7 @@ import {
   Landmark
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConcurrencyService } from '@/services/concurrencyService';
 import ModalAltaExpress from './ModalAltaExpress';
 import ModalAltaVehiculo from './ModalAltaVehiculo';
 import { createPortal } from 'react-dom';
@@ -545,25 +546,15 @@ export default function QuoteBuilder({
 
       if (dErr) throw dErr;
 
-      // 3. Decrementar existencias del inventario físico 'inventario_llantas'
-      for (const item of selectedItems) {
-        const { data: tireData, error: getErr } = await supabase
-          .from('inventario_llantas')
-          .select('stock_actual')
-          .eq('id', item.tire.id)
-          .single();
+      // 3. Decrementar existencias atómicamente con bloqueo pesimista (SELECT ... FOR UPDATE)
+      const stockItems = selectedItems.map(item => ({
+        llanta_id: item.tire.id,
+        cantidad: item.cantidad,
+      }));
 
-        if (getErr) throw getErr;
-
-        const currentStock = tireData ? tireData.stock_actual : item.tire.stock_actual;
-        const newStock = Math.max(0, currentStock - item.cantidad);
-
-        const { error: updErr } = await supabase
-          .from('inventario_llantas')
-          .update({ stock_actual: newStock })
-          .eq('id', item.tire.id);
-
-        if (updErr) throw updErr;
+      const stockRes = await ConcurrencyService.descontarStockLote(stockItems);
+      if (!stockRes.success) {
+        throw new Error(stockRes.message || 'Existencia insuficiente en inventario para procesar la venta');
       }
 
       // 4. Guardar información para el ticket impreso y visual

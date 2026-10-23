@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           empresa_id: string
           id: string
+          idempotency_key: string | null
           metodo: string | null
           monto: number
           responsable: string | null
@@ -31,6 +32,7 @@ export type Database = {
           created_at?: string
           empresa_id?: string
           id?: string
+          idempotency_key?: string | null
           metodo?: string | null
           monto: number
           responsable?: string | null
@@ -42,6 +44,7 @@ export type Database = {
           created_at?: string
           empresa_id?: string
           id?: string
+          idempotency_key?: string | null
           metodo?: string | null
           monto?: number
           responsable?: string | null
@@ -1018,7 +1021,9 @@ export type Database = {
           sub_estado: string | null
           sucursal_id: string | null
           tags: string[] | null
+          updated_at: string | null
           vehiculo_id: string
+          version: number
         }
         Insert: {
           aprobado_cliente_at?: string | null
@@ -1044,7 +1049,9 @@ export type Database = {
           sub_estado?: string | null
           sucursal_id?: string | null
           tags?: string[] | null
+          updated_at?: string | null
           vehiculo_id: string
+          version?: number
         }
         Update: {
           aprobado_cliente_at?: string | null
@@ -1070,7 +1077,9 @@ export type Database = {
           sub_estado?: string | null
           sucursal_id?: string | null
           tags?: string[] | null
+          updated_at?: string | null
           vehiculo_id?: string
+          version?: number
         }
         Relationships: [
           {
@@ -1678,6 +1687,35 @@ export type Database = {
       crear_empresa_y_perfil: {
         Args: { p_nombre_empresa: string; p_nombre_usuario: string }
         Returns: undefined
+      }
+      fn_actualizar_orden_concurrente: {
+        Args: {
+          p_expected_version: number
+          p_orden_id: string
+          p_payload: Json
+        }
+        Returns: Json
+      }
+      fn_ajustar_stock_llanta: {
+        Args: {
+          p_cantidad_delta: number
+          p_llanta_id: string
+          p_permitir_negativo?: boolean
+        }
+        Returns: Json
+      }
+      fn_descontar_stock_orden: { Args: { p_items: Json }; Returns: Json }
+      fn_registrar_movimiento_caja: {
+        Args: {
+          p_concepto: string
+          p_idempotency_key?: string
+          p_metodo?: string
+          p_monto: number
+          p_responsable?: string
+          p_sucursal_id?: string
+          p_tipo: string
+        }
+        Returns: Json
       }
       is_superadmin: { Args: never; Returns: boolean }
       obtener_orden_portal_publico: {

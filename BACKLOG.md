@@ -3,7 +3,6 @@
 # Backlog del Proyecto - Autolisto
 
 ## Pendientes
-- [ ] Control de Concurrencia (Race Conditions) #backend @media <!-- asana:121681444016048 --> ➔ [[Control de Concurrencia (Race Conditions)]]
 - [ ] CI/CD y Separación de Entornos #devops @alta <!-- asana:1216816770799595 --> ➔ [[Pipeline CI-CD y Separacion de Entornos (Staging vs Prod)]]
 - [ ] Monitoreo de Errores #devops @alta <!-- asana:1216814440802834 --> ➔ [[Monitoreo de Errores y Trazabilidad en Produccion]]
 - [ ] Recuperación Ante Desastres (PITR) #devops @alta <!-- asana:1216816152285247 --> ➔ [[Politicas de Recuperacion ante Desastres (PITR)]]
@@ -13,6 +12,7 @@
 - [-] Cobertura de Pruebas Automatizadas #qa @alta <!-- asana:1216816770994447 --> ➔ [[Estrategia de Cobertura de Pruebas (Testing)]]
 
 ## Completado
+- [x] Control de Concurrencia (Race Conditions: Bloqueos Pesimistas, Versiones Optimistas e Idempotencia) #backend #arquitectura @media <!-- asana:1216814441016048 --> ➔ [[Control de Concurrencia (Race Conditions)]]
 - [x] Módulo de Soporte Técnico Integrado (Control HQ, Impersonación, Kill-Switch, Suscripciones y Dominios White-Label) #frontend #arquitectura @alta <!-- asana:1216816152285021 --> ➔ [[Modulo de Soporte Tecnico Integrado en App]] & [[Control HQ, Impersonacion y Marca Blanca]]
 - [x] Aislamiento a Nivel de Datos (RLS) #arquitectura @alta <!-- asana:1216816770900016 --> ➔ [[Aislamiento de Datos con Row Level Security (RLS)]] & [[Arquitectura Multi-Tenant Unificada y Auth SSR]]
 - [x] Migración y Esquema Limpio #arquitectura @alta <!-- asana:1216816152155273 --> ➔ [[Migraciones de Esquema en Supabase (Clean Schema)]]

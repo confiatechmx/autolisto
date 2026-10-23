@@ -14,6 +14,7 @@ import {
   FileText
 } from 'lucide-react';
 import { useRoleAccess } from '@/hooks/useRoleAccess';
+import { ConcurrencyService } from '@/services/concurrencyService';
 
 export default function PosHistoryDashboard() {
   const { isAdmin } = useRoleAccess();
@@ -141,21 +142,14 @@ export default function PosHistoryDashboard() {
       
       if (dErr) throw dErr;
 
-      // 2. Return stock
+      // 2. Return stock atómicamente con bloqueo pesimista en base de datos
       if (details && details.length > 0) {
         for (const item of details) {
-          const { data: tireData } = await supabase
-            .from('inventario_llantas')
-            .select('stock_actual')
-            .eq('id', item.llanta_id)
-            .single();
-          
-          if (tireData) {
-            await supabase
-              .from('inventario_llantas')
-              .update({ stock_actual: tireData.stock_actual + item.cantidad })
-              .eq('id', item.llanta_id);
-          }
+          await ConcurrencyService.ajustarStock({
+            llantaId: item.llanta_id,
+            delta: item.cantidad,
+            permitirNegativo: true,
+          });
         }
       }
 

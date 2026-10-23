@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useTenant } from "@/context/TenantContext";
+import { ConcurrencyService } from "@/services/concurrencyService";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { ReceiptModal } from "@/components/caja/ReceiptModal";
@@ -582,15 +583,19 @@ export default function CajaPage() {
         sucursales[0]?.id ||
         "b0000000-0000-0000-0000-000000000001";
 
-      await supabase.from("caja_movimientos").insert({
-        empresa_id: empresa?.id || "a0000000-0000-0000-0000-000000000001",
-        sucursal_id: targetSucursalId,
+      const cajaRes = await ConcurrencyService.registrarMovimientoCaja({
         tipo: movForm.tipo,
         concepto: movForm.concepto.trim(),
         monto: montoNum,
         metodo: movForm.metodo,
         responsable: movForm.responsable.trim() || "Administrador",
+        sucursalId: targetSucursalId,
       });
+
+      if (!cajaRes.success) {
+        alert(cajaRes.message || "Error al registrar movimiento en caja");
+        return;
+      }
 
       setIsCajaModalOpen(false);
       setMovForm({
