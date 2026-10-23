@@ -12,6 +12,8 @@ import {
   Building2,
   Gauge,
   CheckSquare,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 
 interface Vehicle {
@@ -64,6 +66,15 @@ export function OrderForm({
   const [selectedDeferredIds, setSelectedDeferredIds] = useState<string[]>(
     initialDiferidoId ? [initialDiferidoId] : []
   );
+
+  // Mode: Express New Ingestion vs Registered Selection
+  const [isExpressMode, setIsExpressMode] = useState(false);
+  const [expressClientName, setExpressClientName] = useState("");
+  const [expressClientPhone, setExpressClientPhone] = useState("");
+  const [expressVehicleMarca, setExpressVehicleMarca] = useState("");
+  const [expressVehicleModelo, setExpressVehicleModelo] = useState("");
+  const [expressVehiclePlacas, setExpressVehiclePlacas] = useState("");
+  const [expressVehicleAnio, setExpressVehicleAnio] = useState(String(new Date().getFullYear()));
 
   const [selectedClientId, setSelectedClientId] = useState(initialClientId || "");
   const [selectedVehicleId, setSelectedVehicleId] = useState(initialVehicleId || "");
@@ -199,19 +210,77 @@ export function OrderForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedVehicleId) {
-      setError("Debes seleccionar un vehículo para crear la orden.");
-      return;
-    }
-
     setLoading(true);
     setError("");
 
+    let targetVehicleId = selectedVehicleId;
     const kmIngreso = parseInt(formData.kilometraje_ingreso) || 0;
+
+    // Express New Ingestion Logic
+    if (isExpressMode) {
+      if (!expressClientName.trim() || !expressClientPhone.trim()) {
+        setError("Por favor ingresa el nombre y teléfono del cliente.");
+        setLoading(false);
+        return;
+      }
+      if (!expressVehicleMarca.trim() || !expressVehicleModelo.trim()) {
+        setError("Por favor ingresa la marca y modelo del vehículo.");
+        setLoading(false);
+        return;
+      }
+
+      // 1. Create client
+      const { data: newClient, error: clientErr } = await supabase
+        .from("clientes")
+        .insert({
+          empresa_id: empresa?.id || null,
+          nombre: expressClientName.trim(),
+          telefono: expressClientPhone.trim(),
+          tags: ["Ingreso Express Mostrador"],
+        })
+        .select("id")
+        .single();
+
+      if (clientErr || !newClient) {
+        setError(clientErr?.message || "Error al crear el cliente.");
+        setLoading(false);
+        return;
+      }
+
+      // 2. Create vehicle
+      const { data: newVehicle, error: vehicleErr } = await supabase
+        .from("vehiculos")
+        .insert({
+          cliente_id: newClient.id,
+          marca: expressVehicleMarca.trim(),
+          modelo: expressVehicleModelo.trim(),
+          placas: expressVehiclePlacas.trim().toUpperCase() || null,
+          anio: parseInt(expressVehicleAnio) || new Date().getFullYear(),
+          kilometraje_actual: kmIngreso || null,
+        })
+        .select("id")
+        .single();
+
+      if (vehicleErr || !newVehicle) {
+        setError(vehicleErr?.message || "Error al registrar el vehículo.");
+        setLoading(false);
+        return;
+      }
+
+      targetVehicleId = newVehicle.id;
+    } else {
+      if (!targetVehicleId) {
+        setError("Debes seleccionar un vehículo para crear la orden.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    // 3. Create Service Order
     const { data: createdOrder, error: dbError } = await supabase
       .from("ordenes_servicio")
       .insert({
-        vehiculo_id: selectedVehicleId,
+        vehiculo_id: targetVehicleId,
         sucursal_id: formData.sucursal_id || sucursalActiva?.id || sucursales[0]?.id || null,
         mecanico_id: formData.mecanico_id || null,
         bahia_rampa: formData.bahia_rampa || null,
@@ -237,7 +306,7 @@ export function OrderForm({
       await supabase
         .from("vehiculos")
         .update({ kilometraje_actual: kmIngreso })
-        .eq("id", selectedVehicleId);
+        .eq("id", targetVehicleId);
     }
 
     // Attach any selected deferred works to the new order
@@ -258,10 +327,9 @@ export function OrderForm({
           proveedor: "AutoZone Comercial",
           cantidad: 1,
           costo_unitario: costoUnit,
-          margen_porcentaje: margenDefault,
           precio_unitario: precioVenta,
           subtotal: precioVenta,
-          estatus_aprobacion: "Aprobado",
+          estatus_aprobacion: "Pendiente",
         });
 
         await supabase
@@ -275,42 +343,161 @@ export function OrderForm({
     onSuccess(createdOrder.id);
   };
 
-  const inputClasses =
-    "border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 rounded-md bg-white text-xs p-2 w-full transition-all text-slate-900 outline-none";
-  const labelClasses = "block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1";
-
   const selectedClient = clients.find((c) => c.id === selectedClientId);
   const availableVehicles = selectedClient?.vehiculos || [];
 
+  const inputClasses =
+    "w-full text-xs font-semibold border border-slate-300 rounded-md p-2 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 shadow-2xs";
+  const labelClasses = "block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1";
+
   if (fetchingData) {
     return (
-      <div className="p-12 flex flex-col items-center justify-center text-slate-500 gap-3">
-        <Loader2 size={24} className="animate-spin text-blue-600" />
-        <p className="text-xs font-medium">Cargando padrón de clientes y unidades...</p>
+      <div className="p-10 flex flex-col items-center justify-center gap-3 text-slate-500">
+        <Loader2 className="animate-spin text-blue-600" size={28} />
+        <span className="text-xs font-semibold">Cargando catálogo y clientes...</span>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col">
-      <div className="p-5 space-y-5">
-        {error && (
-          <div className="bg-red-50 text-red-700 text-xs font-medium p-3 rounded-md border border-red-200">
-            {error}
-          </div>
-        )}
+    <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[85vh] overflow-y-auto dense-scrollbar">
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-md font-semibold">
+          {error}
+        </div>
+      )}
 
-        {/* 1. Identificación de Cliente y Vehículo */}
+      {/* Mode Toggle: Express New Ingestion vs Registered Selection */}
+      <div className="flex items-center justify-between p-2.5 bg-slate-100 rounded-lg border border-slate-200">
+        <div className="flex items-center gap-2">
+          <Zap size={16} className={isExpressMode ? "text-amber-500" : "text-slate-400"} />
+          <span className="text-xs font-bold text-slate-800">
+            {isExpressMode ? "Modo: Recepción Express (Cliente y Auto Nuevo)" : "Modo: Cliente / Vehículo Existente"}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setIsExpressMode(!isExpressMode);
+            setError("");
+          }}
+          className={`text-xs font-bold px-3 py-1 rounded-md transition-colors cursor-pointer ${
+            isExpressMode
+              ? "bg-amber-500 hover:bg-amber-600 text-white"
+              : "bg-white hover:bg-slate-200 text-slate-700 border border-slate-300"
+          }`}
+        >
+          {isExpressMode ? "Cambiar a Cliente Registrado" : "⚡ Alta Rápida de Auto en Patio"}
+        </button>
+      </div>
+
+      {/* Branch Selection if multiple */}
+      {sucursales.length > 1 && (
+        <div>
+          <label className={labelClasses}>Sucursal de Atención</label>
+          <select
+            name="sucursal_id"
+            value={formData.sucursal_id}
+            onChange={handleChange}
+            className={inputClasses}
+          >
+            {sucursales.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.nombre} ({s.codigo})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* SECTION 1: Client & Vehicle Identification */}
+      {isExpressMode ? (
+        <div className="bg-amber-50/60 border border-amber-200 rounded-lg p-3.5 space-y-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+            <Zap size={14} className="text-amber-600" /> Datos del Nuevo Cliente y Unidad en Patio
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelClasses}>Nombre Completo del Titular *</label>
+              <input
+                type="text"
+                required={isExpressMode}
+                value={expressClientName}
+                onChange={(e) => setExpressClientName(e.target.value)}
+                placeholder="Ej. Roberto Sánchez Martínez"
+                className={inputClasses}
+              />
+            </div>
+            <div>
+              <label className={labelClasses}>WhatsApp / Teléfono Celular *</label>
+              <input
+                type="tel"
+                required={isExpressMode}
+                value={expressClientPhone}
+                onChange={(e) => setExpressClientPhone(e.target.value)}
+                placeholder="Ej. 81 1234 5678"
+                className={inputClasses}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className={labelClasses}>Marca *</label>
+              <input
+                type="text"
+                required={isExpressMode}
+                value={expressVehicleMarca}
+                onChange={(e) => setExpressVehicleMarca(e.target.value)}
+                placeholder="Ej. Nissan"
+                className={inputClasses}
+              />
+            </div>
+            <div>
+              <label className={labelClasses}>Modelo *</label>
+              <input
+                type="text"
+                required={isExpressMode}
+                value={expressVehicleModelo}
+                onChange={(e) => setExpressVehicleModelo(e.target.value)}
+                placeholder="Ej. Versa Sense"
+                className={inputClasses}
+              />
+            </div>
+            <div>
+              <label className={labelClasses}>Placas</label>
+              <input
+                type="text"
+                value={expressVehiclePlacas}
+                onChange={(e) => setExpressVehiclePlacas(e.target.value)}
+                placeholder="Ej. STN-492-B"
+                className={`${inputClasses} font-mono uppercase`}
+              />
+            </div>
+            <div>
+              <label className={labelClasses}>Año</label>
+              <input
+                type="number"
+                value={expressVehicleAnio}
+                onChange={(e) => setExpressVehicleAnio(e.target.value)}
+                placeholder="2022"
+                className={inputClasses}
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
         <div className="space-y-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-            <User size={14} className="text-blue-600" /> 1. Cliente y Unidad
+            <User size={14} className="text-blue-600" /> 1. Cliente y Unidad Registrada
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelClasses}>Cliente Titular</label>
               <select
-                required
+                required={!isExpressMode}
                 value={selectedClientId}
                 onChange={(e) => {
                   const cid = e.target.value;
@@ -344,7 +531,7 @@ export function OrderForm({
             <div>
               <label className={labelClasses}>Vehículo a Ingresar</label>
               <select
-                required
+                required={!isExpressMode}
                 disabled={!selectedClientId || availableVehicles.length === 0}
                 value={selectedVehicleId}
                 onChange={(e) => {
@@ -364,7 +551,7 @@ export function OrderForm({
                   {!selectedClientId
                     ? "Primero selecciona un cliente"
                     : availableVehicles.length === 0
-                    ? "Cliente sin vehículos"
+                    ? "Cliente sin vehículos registrados"
                     : "Selecciona un vehículo..."}
                 </option>
                 {availableVehicles.map((v) => (
@@ -398,7 +585,7 @@ export function OrderForm({
                       className={`flex items-center justify-between p-2 rounded border text-xs cursor-pointer transition-colors ${
                         isChecked
                           ? "bg-white border-amber-500 shadow-2xs"
-                          : "bg-amber-50/50 border-amber-200/80"
+                          : "bg-white/60 border-amber-200 hover:bg-white"
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -406,22 +593,13 @@ export function OrderForm({
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleDeferredSelection(dif.id)}
-                          className="rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                          className="w-4 h-4 text-blue-600 rounded border-slate-300"
                         />
-                        <div>
-                          <span className="font-bold text-slate-900">{dif.concepto}</span>
-                          {dif.categoria && (
-                            <span className="text-[10px] text-slate-500 ml-1.5">
-                              ({dif.categoria})
-                            </span>
-                          )}
-                        </div>
+                        <span className="font-semibold text-slate-800">{dif.concepto}</span>
                       </div>
-                      {dif.costo_estimado && (
-                        <span className="font-mono font-bold text-slate-800 tabular-nums">
-                          ${Number(dif.costo_estimado).toLocaleString("es-MX")}
-                        </span>
-                      )}
+                      <span className="font-bold text-slate-900 tabular-nums">
+                        ${Number(dif.costo_estimado || 0).toLocaleString("es-MX")}
+                      </span>
                     </label>
                   );
                 })}
@@ -429,161 +607,132 @@ export function OrderForm({
             </div>
           )}
         </div>
+      )}
 
-        {/* 2. Asignación Operativa (Sucursal, Técnico, Bahía, Prioridad) */}
-        <div className="space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-            <Wrench size={14} className="text-blue-600" /> 2. Asignación de Taller y Rampa
-          </h3>
+      {/* SECTION 2: Operation & Bay Assignment */}
+      <div className="space-y-3 pt-2">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+          <Wrench size={14} className="text-blue-600" /> 2. Asignación y Operación
+        </h3>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label className={labelClasses}>Sucursal</label>
-              <select
-                name="sucursal_id"
-                value={formData.sucursal_id}
-                onChange={handleChange}
-                className={inputClasses}
-              >
-                {sucursales.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre} ({s.codigo})
-                  </option>
-                ))}
-              </select>
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className={labelClasses}>Bahía / Rampa</label>
+            <select
+              name="bahia_rampa"
+              value={formData.bahia_rampa}
+              onChange={handleChange}
+              className={inputClasses}
+            >
+              {BAHIAS_TALLER.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <div>
-              <label className={labelClasses}>Técnico Asignado</label>
-              <select
-                name="mecanico_id"
-                value={formData.mecanico_id}
-                onChange={handleChange}
-                className={inputClasses}
-              >
-                <option value="">Por asignar en piso</option>
-                {mechanics.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nombre} {m.especialidad ? `• ${m.especialidad}` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label className={labelClasses}>Técnico Mecánico</label>
+            <select
+              name="mecanico_id"
+              value={formData.mecanico_id}
+              onChange={handleChange}
+              className={inputClasses}
+            >
+              <option value="">(Sin asignar en recepción)</option>
+              {mechanics.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre} {m.especialidad ? `• ${m.especialidad}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <div>
-              <label className={labelClasses}>Bahía / Rampa</label>
-              <select
-                name="bahia_rampa"
-                value={formData.bahia_rampa}
-                onChange={handleChange}
-                className={inputClasses}
-              >
-                {BAHIAS_TALLER.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className={labelClasses}>Prioridad</label>
-              <select
-                name="prioridad"
-                value={formData.prioridad}
-                onChange={handleChange}
-                className={inputClasses}
-              >
-                <option value="low">Baja (Programada)</option>
-                <option value="normal">Normal (Estándar)</option>
-                <option value="high">Alta (Express)</option>
-                <option value="urgent">Urgente (Garantía / Flotilla)</option>
-              </select>
-            </div>
+          <div>
+            <label className={labelClasses}>Prioridad</label>
+            <select
+              name="prioridad"
+              value={formData.prioridad}
+              onChange={handleChange}
+              className={inputClasses}
+            >
+              <option value="normal">Normal</option>
+              <option value="urgente">⚡ Urgente / Espera en Sala</option>
+              <option value="flotilla">🚚 Flotilla Comercial</option>
+            </select>
           </div>
         </div>
 
-        {/* 3. Check-in de Recepción */}
-        <div className="space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-            <Car size={14} className="text-blue-600" /> 3. Check-in de Recepción
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className={labelClasses}>Kilometraje de Ingreso (km)</label>
-              <input
-                required
-                type="number"
-                min="0"
-                name="kilometraje_ingreso"
-                value={formData.kilometraje_ingreso}
-                onChange={handleChange}
-                placeholder="Ej. 54200"
-                className={`${inputClasses} font-mono font-bold tabular-nums`}
-              />
-            </div>
-
-            <div>
-              <label className={labelClasses}>Nivel de Combustible</label>
-              <select
-                required
-                name="nivel_gasolina"
-                value={formData.nivel_gasolina}
-                onChange={handleChange}
-                className={inputClasses}
-              >
-                <option value="Vacío">Vacío (Reserva)</option>
-                <option value="1/4">1/4 de Tanque</option>
-                <option value="1/2">1/2 Tanque</option>
-                <option value="3/4">3/4 de Tanque</option>
-                <option value="Lleno">Tanque Lleno</option>
-              </select>
-            </div>
-          </div>
-
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className={labelClasses}>Síntoma / Problema Reportado por el Cliente</label>
-            <textarea
-              rows={2}
-              name="problema_reportado"
-              value={formData.problema_reportado}
+            <label className={labelClasses}>Kilometraje de Entrada</label>
+            <input
+              type="number"
+              name="kilometraje_ingreso"
+              value={formData.kilometraje_ingreso}
               onChange={handleChange}
-              placeholder="Ej. Vibración en el volante a 90 km/h y rechinido en frenos delanteros..."
+              placeholder="Ej. 68500"
               className={inputClasses}
             />
           </div>
 
           <div>
-            <label className={labelClasses}>Notas de Recepción / Observaciones de Carrocería</label>
-            <textarea
-              rows={2}
-              name="notas_recepcion"
-              value={formData.notas_recepcion}
+            <label className={labelClasses}>Nivel de Gasolina</label>
+            <select
+              name="nivel_gasolina"
+              value={formData.nivel_gasolina}
               onChange={handleChange}
-              placeholder="Ej. Cliente deja birlo de seguridad en guantera. Rayón previo en facia trasera derecha..."
               className={inputClasses}
-            />
+            >
+              <option value="Reserva">Reserva (E)</option>
+              <option value="1/4">1/4 de Tanque</option>
+              <option value="1/2">1/2 de Tanque</option>
+              <option value="3/4">3/4 de Tanque</option>
+              <option value="Lleno">Tanque Lleno (F)</option>
+            </select>
           </div>
+        </div>
+
+        <div>
+          <label className={labelClasses}>Motivo de Ingreso / Falla Reportada por el Cliente *</label>
+          <textarea
+            required
+            name="problema_reportado"
+            rows={2}
+            value={formData.problema_reportado}
+            onChange={handleChange}
+            placeholder="Ej. Ruido al frenar en frío y testigo de Check Engine encendido..."
+            className={`${inputClasses} resize-none`}
+          />
         </div>
       </div>
 
-      {/* Footer Actions */}
-      <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2.5">
+      {/* Buttons */}
+      <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors cursor-pointer"
+          disabled={loading}
+          className="px-4 py-2 rounded-md border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
         >
           Cancelar
         </button>
         <button
           type="submit"
-          disabled={loading || !selectedVehicleId}
-          className="px-5 py-2 text-xs font-bold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center gap-1.5 cursor-pointer"
+          disabled={loading}
+          style={{ backgroundColor: empresa?.color_primario || "#0284c7" }}
+          className="px-5 py-2 rounded-md text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:opacity-95 transition-opacity disabled:opacity-50 cursor-pointer"
         >
-          {loading && <Loader2 size={14} className="animate-spin" />}
-          {loading ? "Abriendo Orden..." : "Crear Orden de Servicio"}
+          {loading ? (
+            <>
+              <Loader2 className="animate-spin" size={14} /> Creando Orden...
+            </>
+          ) : (
+            <>
+              <Sparkles size={14} /> Crear Orden de Servicio
+            </>
+          )}
         </button>
       </div>
     </form>
