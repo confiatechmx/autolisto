@@ -45,6 +45,8 @@ import {
   Copy,
   Check,
   Printer,
+  FileSpreadsheet,
+  Download,
   MessageCircle,
   Sparkles,
   ShieldCheck,
@@ -781,8 +783,51 @@ export default function CajaPage() {
     setTimeout(() => setCopiedClabe(false), 2000);
   };
 
+  const handleExportHistorialCSV = () => {
+    if (historialTurnos.length === 0) return;
+    const lines: string[] = [];
+    lines.push('HISTORIAL DE CORTES DE CAJA Y TURNOS (AUDITORIA CIERRE Z)');
+    lines.push(`Empresa;${empresa?.nombre_comercial || 'Cova Tires'}`);
+    lines.push(`Sucursal;${sucursalActiva?.nombre || 'Matriz'}`);
+    lines.push(`Fecha de Descarga;${new Date().toLocaleString('es-MX')}`);
+    lines.push('');
+    lines.push('Turno ID;Fecha Apertura;Fecha Cierre;Fondo 1 Apertura;Fondo 1 Declarado;Fondo 1 Teorico;Variacion F1;Fondo 2 Apertura;Fondo 2 Declarado;Fondo 2 Teorico;Variacion F2;Remesa Retirada;Fondo Siguiente;Estado;Justificacion');
+
+    historialTurnos.forEach((t) => {
+      lines.push([
+        t.id,
+        new Date(t.fecha_apertura).toLocaleString('es-MX'),
+        t.fecha_cierre ? new Date(t.fecha_cierre).toLocaleString('es-MX') : 'Abierto',
+        Number(t.monto_apertura_fondo1 || 0).toFixed(2),
+        Number(t.monto_cierre_declarado_f1 || 0).toFixed(2),
+        Number(t.monto_cierre_teorico_f1 || 0).toFixed(2),
+        Number(t.diferencia_f1 || 0).toFixed(2),
+        Number(t.monto_apertura_fondo2 || 0).toFixed(2),
+        Number(t.monto_cierre_declarado_f2 || 0).toFixed(2),
+        Number(t.monto_cierre_teorico_f2 || 0).toFixed(2),
+        Number(t.diferencia_f2 || 0).toFixed(2),
+        Number(t.monto_remesa_retirada || 0).toFixed(2),
+        Number(t.monto_fondo_siguiente_f1 || 0).toFixed(2),
+        t.estado,
+        (t.justificacion_descuadre || '').replace(/;/g, ' '),
+      ].join(';'));
+    });
+
+    const csvContent = '\uFEFF' + lines.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Historial_Cortes_Z_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (loading) {
-    return (
+  
+
+  return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <Loader2 className="animate-spin text-primary" size={32} />
       </div>
@@ -1880,7 +1925,7 @@ export default function CajaPage() {
 
             {/* Historial de Turnos y Cortes de Caja (Cierre Z) */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
-              <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                     <Receipt size={16} className="text-emerald-600" />
@@ -1890,6 +1935,15 @@ export default function CajaPage() {
                     Auditoría inmutable de cierres, arqueos de gaveta, remesas y desviaciones
                   </p>
                 </div>
+                {historialTurnos.length > 0 && (
+                  <button
+                    onClick={handleExportHistorialCSV}
+                    className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors shrink-0 shadow-xs"
+                  >
+                    <FileSpreadsheet size={14} className="text-emerald-600" />
+                    <span>Exportar a Excel (CSV)</span>
+                  </button>
+                )}
               </div>
 
               <div className="overflow-x-auto">

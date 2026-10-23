@@ -9,6 +9,8 @@ import {
   AlertTriangle,
   Receipt,
   MessageCircle,
+  FileSpreadsheet,
+  Download,
 } from "lucide-react";
 
 interface TicketCierreModalProps {
@@ -55,6 +57,70 @@ export function TicketCierreModal({
     window.print();
   };
 
+  const handleExportCSV = () => {
+    const lines: string[] = [];
+    lines.push(`REPORTE DE AUDITORÍA Y CORTE DE CAJA (CORTE Z)`);
+    lines.push(`Empresa;${empresaNombre}`);
+    lines.push(`Sucursal;${sucursalNombre}`);
+    lines.push(`Fecha de Emisión;${fechaStr} ${horaStr}`);
+    lines.push(`Responsable en Turno;${cajeroNombre}`);
+    lines.push(`Turno ID;${cierreData.turno_id || "ACTUAL"}`);
+    lines.push(``);
+
+    lines.push(`ARQUEO DE FONDOS EN EFECTIVO`);
+    lines.push(`Fondo;Saldo Inicial;Saldo Teórico;Físico Declarado;Variación / Descuadre`);
+    lines.push(
+      `Fondo 1 (Operativo Mostrador);$${Number(teorico?.fondo1?.apertura || 0).toFixed(2)};$${Number(cierreData.teoricoF1 || 0).toFixed(2)};$${f1Declarado.toFixed(2)};${difF1 > 0 ? "+" : ""}$${difF1.toFixed(2)}`
+    );
+    lines.push(
+      `Fondo 2 (Reserva Taller);$${Number(teorico?.fondo2?.apertura || 0).toFixed(2)};$${Number(cierreData.teoricoF2 || 0).toFixed(2)};$${f2Declarado.toFixed(2)};${difF2 > 0 ? "+" : ""}$${difF2.toFixed(2)}`
+    );
+    lines.push(``);
+
+    lines.push(`DESTINO DEL EFECTIVO`);
+    lines.push(`Concepto;Monto`);
+    lines.push(`Remesa Retirada a Caja Fuerte / Depósito;$${remesa.toFixed(2)}`);
+    lines.push(`Fondo Base para Siguiente Turno;$${fondoSig.toFixed(2)}`);
+    lines.push(``);
+
+    if (teorico?.bancosSPEI && teorico.bancosSPEI.length > 0) {
+      lines.push(`CONCILIACIÓN DE TRANSFERENCIAS SPEI POR CUENTA`);
+      lines.push(`Cuenta Bancaria;Banco;Transacciones;Monto Total`);
+      teorico.bancosSPEI.forEach((b: any) => {
+        lines.push(`${b.alias};${b.banco};${b.conteo};$${b.total.toFixed(2)}`);
+      });
+      lines.push(``);
+    }
+
+    lines.push(`TERMINALES Y OTROS MÉTODOS DE PAGO`);
+    lines.push(`Método;Transacciones;Monto Total`);
+    lines.push(
+      `Terminales TPV (Tarjetas);${teorico?.tarjetasTPV?.conteo || 0};$${Number(teorico?.tarjetasTPV?.total || 0).toFixed(2)}`
+    );
+    if (teorico?.bnpl && teorico.bnpl.total > 0) {
+      lines.push(
+        `Crédito BNPL (Kueski / Atrato);${teorico.bnpl.conteo};$${Number(teorico.bnpl.total).toFixed(2)}`
+      );
+    }
+    lines.push(``);
+    lines.push(
+      `TOTAL GENERAL VENTAS DEL TURNO;$${Number(teorico?.totalVentasTurno || 0).toFixed(2)}`
+    );
+
+    const csvContent = "\uFEFF" + lines.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `Corte_Z_${empresaNombre.replace(/\s+/g, "_")}_${now.toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleWhatsAppShare = () => {
     let msg = `*CORTE DE CAJA Z - ${empresaNombre.toUpperCase()}*\n`;
     msg += `📍 Sucursal: ${sucursalNombre}\n`;
@@ -96,6 +162,29 @@ export function TicketCierreModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-slate-900/75 backdrop-blur-xs">
+      {/* Print Specific CSS */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media print {
+              body * { visibility: hidden; }
+              #printable-corte-ticket, #printable-corte-ticket * { visibility: visible; }
+              #printable-corte-ticket {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100% !important;
+                max-width: 80mm !important;
+                padding: 10px !important;
+                margin: 0 auto !important;
+                box-shadow: none !important;
+                border: none !important;
+              }
+            }
+          `,
+        }}
+      />
+
       <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 flex flex-col max-h-[94vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="p-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
@@ -114,6 +203,7 @@ export function TicketCierreModal({
         {/* Printable Ticket Area */}
         <div className="p-4 overflow-y-auto flex-1 bg-slate-100 flex justify-center">
           <div
+            id="printable-corte-ticket"
             ref={ticketRef}
             className="w-full max-w-[340px] bg-white p-5 shadow-sm rounded-xl font-mono text-[11px] text-slate-800 leading-tight border border-slate-200"
           >
@@ -139,7 +229,9 @@ export function TicketCierreModal({
               </div>
               <div className="flex justify-between mt-1">
                 <span>TURNO ID:</span>
-                <span className="font-bold">{cierreData.turno_id ? String(cierreData.turno_id).substring(0, 8) : "ACTUAL"}</span>
+                <span className="font-bold">
+                  {cierreData.turno_id ? String(cierreData.turno_id).substring(0, 8) : "ACTUAL"}
+                </span>
               </div>
             </div>
 
@@ -247,22 +339,30 @@ export function TicketCierreModal({
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
+        {/* Footer Actions: PDF/Print, CSV Excel, WhatsApp */}
+        <div className="p-4 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0">
+          <button
+            onClick={handleExportCSV}
+            className="w-full sm:flex-1 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs"
+          >
+            <FileSpreadsheet size={15} className="text-emerald-700" />
+            <span>Descargar Excel (CSV)</span>
+          </button>
+
           <button
             onClick={handleWhatsAppShare}
-            className="flex-1 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs"
+            className="w-full sm:flex-1 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs"
           >
             <MessageCircle size={15} />
-            <span>Enviar a WhatsApp</span>
+            <span>WhatsApp</span>
           </button>
 
           <button
             onClick={handlePrint}
-            className="flex-1 px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs"
+            className="w-full sm:flex-1 px-3 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs"
           >
             <Printer size={15} />
-            <span>Imprimir Ticket</span>
+            <span>Exportar PDF / Imprimir</span>
           </button>
         </div>
       </div>
