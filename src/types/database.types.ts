@@ -513,9 +513,12 @@ export type Database = {
       }
       empresas: {
         Row: {
+          activo: boolean | null
+          ambiente: string | null
           color_primario: string | null
           color_sidebar: string | null
           created_at: string
+          custom_metadata: Json | null
           direccion: string | null
           email_contacto: string | null
           eslogan: string | null
@@ -523,21 +526,21 @@ export type Database = {
           logo_url: string | null
           margen_refacciones_default: number | null
           nombre_comercial: string
+          plan_suscripcion: string | null
           rfc: string | null
           sitio_web: string | null
           tasa_iva: number | null
           telefono: string | null
           terminos_condiciones: string | null
-          activo: boolean | null
-          ambiente: string | null
-          custom_metadata: Json | null
-          plan_suscripcion: string | null
           updated_at: string | null
         }
         Insert: {
+          activo?: boolean | null
+          ambiente?: string | null
           color_primario?: string | null
           color_sidebar?: string | null
           created_at?: string
+          custom_metadata?: Json | null
           direccion?: string | null
           email_contacto?: string | null
           eslogan?: string | null
@@ -545,21 +548,21 @@ export type Database = {
           logo_url?: string | null
           margen_refacciones_default?: number | null
           nombre_comercial: string
+          plan_suscripcion?: string | null
           rfc?: string | null
           sitio_web?: string | null
           tasa_iva?: number | null
           telefono?: string | null
           terminos_condiciones?: string | null
-          activo?: boolean | null
-          ambiente?: string | null
-          custom_metadata?: Json | null
-          plan_suscripcion?: string | null
           updated_at?: string | null
         }
         Update: {
+          activo?: boolean | null
+          ambiente?: string | null
           color_primario?: string | null
           color_sidebar?: string | null
           created_at?: string
+          custom_metadata?: Json | null
           direccion?: string | null
           email_contacto?: string | null
           eslogan?: string | null
@@ -567,15 +570,12 @@ export type Database = {
           logo_url?: string | null
           margen_refacciones_default?: number | null
           nombre_comercial?: string
+          plan_suscripcion?: string | null
           rfc?: string | null
           sitio_web?: string | null
           tasa_iva?: number | null
           telefono?: string | null
           terminos_condiciones?: string | null
-          activo?: boolean | null
-          ambiente?: string | null
-          custom_metadata?: Json | null
-          plan_suscripcion?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -1346,85 +1346,6 @@ export type Database = {
           },
         ]
       }
-      superadmin_audit_logs: {
-        Row: {
-          accion: string
-          created_at: string
-          detalles: Json | null
-          id: string
-          ip_address: string | null
-          superadmin_id: string | null
-          target_empresa_id: string | null
-        }
-        Insert: {
-          accion: string
-          created_at?: string
-          detalles?: Json | null
-          id?: string
-          ip_address?: string | null
-          superadmin_id?: string | null
-          target_empresa_id?: string | null
-        }
-        Update: {
-          accion?: string
-          created_at?: string
-          detalles?: Json | null
-          id?: string
-          ip_address?: string | null
-          superadmin_id?: string | null
-          target_empresa_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "superadmin_audit_logs_target_empresa_id_fkey"
-            columns: ["target_empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      tenant_domains: {
-        Row: {
-          created_at: string
-          custom_theme: Json | null
-          domain: string
-          empresa_id: string
-          id: string
-          is_primary: boolean | null
-          updated_at: string
-          verified: boolean | null
-        }
-        Insert: {
-          created_at?: string
-          custom_theme?: Json | null
-          domain: string
-          empresa_id: string
-          id?: string
-          is_primary?: boolean | null
-          updated_at?: string
-          verified?: boolean | null
-        }
-        Update: {
-          created_at?: string
-          custom_theme?: Json | null
-          domain?: string
-          empresa_id?: string
-          id?: string
-          is_primary?: boolean | null
-          updated_at?: string
-          verified?: boolean | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "tenant_domains_empresa_id_fkey"
-            columns: ["empresa_id"]
-            isOneToOne: false
-            referencedRelation: "empresas"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       sucursales: {
         Row: {
           activa: boolean | null
@@ -1465,6 +1386,85 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "sucursales_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      superadmin_audit_logs: {
+        Row: {
+          accion: string
+          created_at: string | null
+          detalles: Json | null
+          id: string
+          ip_address: string | null
+          superadmin_id: string | null
+          target_empresa_id: string | null
+        }
+        Insert: {
+          accion: string
+          created_at?: string | null
+          detalles?: Json | null
+          id?: string
+          ip_address?: string | null
+          superadmin_id?: string | null
+          target_empresa_id?: string | null
+        }
+        Update: {
+          accion?: string
+          created_at?: string | null
+          detalles?: Json | null
+          id?: string
+          ip_address?: string | null
+          superadmin_id?: string | null
+          target_empresa_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "superadmin_audit_logs_target_empresa_id_fkey"
+            columns: ["target_empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_domains: {
+        Row: {
+          created_at: string | null
+          custom_theme: Json | null
+          domain: string
+          empresa_id: string
+          id: string
+          is_primary: boolean | null
+          updated_at: string | null
+          verified: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          custom_theme?: Json | null
+          domain: string
+          empresa_id: string
+          id?: string
+          is_primary?: boolean | null
+          updated_at?: string | null
+          verified?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          custom_theme?: Json | null
+          domain?: string
+          empresa_id?: string
+          id?: string
+          is_primary?: boolean | null
+          updated_at?: string | null
+          verified?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_domains_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
@@ -1679,6 +1679,7 @@ export type Database = {
         Args: { p_nombre_empresa: string; p_nombre_usuario: string }
         Returns: undefined
       }
+      is_superadmin: { Args: never; Returns: boolean }
       obtener_orden_portal_publico: {
         Args: { p_orden_id: string }
         Returns: Json
@@ -1693,7 +1694,6 @@ export type Database = {
         }
         Returns: Json
       }
-      is_superadmin: { Args: never; Returns: boolean }
       user_empresa_id: { Args: never; Returns: string }
     }
     Enums: {
