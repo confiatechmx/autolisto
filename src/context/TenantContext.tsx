@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { saasHqService, ImpersonationSession } from "@/services/saasHqService";
+import { tenantDomainService, TenantDomainInfo } from "@/services/tenantDomainService";
 
 export interface EmpresaConfig {
   id: string;
@@ -18,6 +20,10 @@ export interface EmpresaConfig {
   sitio_web: string | null;
   margen_refacciones_default: number;
   terminos_condiciones: string | null;
+  plan_suscripcion?: "STARTER" | "PRO" | "ENTERPRISE" | "BASICO";
+  ambiente?: "PRODUCTION" | "SANDBOX" | "DEMO";
+  activo?: boolean;
+  custom_metadata?: any;
 }
 
 export interface Sucursal {
@@ -81,9 +87,13 @@ interface TenantContextValue {
   loadingTenant: boolean;
   refreshTenant: () => Promise<void>;
   updateBrandTheme: (updates: Partial<EmpresaConfig>) => Promise<void>;
+  customDomainInfo: TenantDomainInfo | null;
+  impersonation: ImpersonationSession | null;
+  isSuperAdmin: boolean;
+  switchEmpresa: (empresaId: string) => Promise<void>;
 }
 
-const DEFAULT_EMPRESA: EmpresaConfig = {
+export const DEFAULT_EMPRESA: EmpresaConfig = {
   id: "a0000000-0000-0000-0000-000000000001",
   nombre_comercial: "Torque & Ruta - Centro Automotriz",
   rfc: "TRC2105148A1",
@@ -99,6 +109,10 @@ const DEFAULT_EMPRESA: EmpresaConfig = {
   margen_refacciones_default: 35,
   terminos_condiciones:
     "Garantía de 30 días o 1,000 km en mano de obra. Refacciones y neumáticos sujetos a garantía del fabricante.",
+  plan_suscripcion: "ENTERPRISE",
+  ambiente: "PRODUCTION",
+  activo: true,
+  custom_metadata: {},
 };
 
 const TenantContext = createContext<TenantContextValue>({
@@ -110,6 +124,10 @@ const TenantContext = createContext<TenantContextValue>({
   loadingTenant: true,
   refreshTenant: async () => {},
   updateBrandTheme: async () => {},
+  customDomainInfo: null,
+  impersonation: null,
+  isSuperAdmin: false,
+  switchEmpresa: async () => {},
 });
 
 export function applyThemeCssVariables(primaryColor: string, sidebarColor: string) {
@@ -126,19 +144,73 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [sucursalActivaId, setSucursalActivaIdState] = useState<string | null>(null);
   const [perfil, setPerfil] = useState<UserPerfil | null>(null);
   const [loadingTenant, setLoadingTenant] = useState(true);
+  const [customDomainInfo, setCustomDomainInfo] = useState<TenantDomainInfo | null>(null);
+  const [impersonation, setImpersonation] = useState<ImpersonationSession | null>(() =>
+    saasHqService.getImpersonationStatus()
+  );
+
+  const isSuperAdmin = perfil?.rol === "SuperAdmin" || perfil?.rol === "SUPERADMIN";
 
   const loadTenant = useCallback(async () => {
     setLoadingTenant(true);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const currentImpersonation = saasHqService.getImpersonationStatus();
+      setImpersonation(currentImpersonation);
 
-      const [{ data: empData }, { data: sucData }] = await Promise.all([
-        supabase.from("empresas").select("*").limit(1).maybeSingle(),
-        supabase.from("sucursales").select("*").order("es_matriz", { ascending: false }),
+      const [domainInfo, { data: authData }] = await Promise.all([
+        tenantDomainService.resolverTenantPorDominio().catch(() => null),
+        supabase.auth.getUser().catch(() => ({ data: { user: null } })),
       ]);
+
+      if (domainInfo) {
+        setCustomDomainInfo(domainInfo);
+      }
+
+      const user = authData?.user;
+      let targetEmpresaId: string | null = null;
+      let userProfile: UserPerfil | null = null;
+
+      if (user) {
+        const { data: perfData } = await supabase
+          .from("perfiles")
+          .select("*")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (perfData) {
+          userProfile = {
+            id: user.id,
+            empresa_id: perfData.empresa_id,
+            sucursal_id: perfData.sucursal_id,
+            nombre: perfData.nombre || user.email || "Usuario",
+            rol: perfData.rol || "Administrador",
+            email: user.email,
+          };
+          setPerfil(userProfile);
+          targetEmpresaId = perfData.empresa_id;
+        }
+      }
+
+      // Si hay una sesión de impersonación activa, prevalece sobre el perfil
+      if (currentImpersonation?.targetEmpresaId) {
+        targetEmpresaId = currentImpersonation.targetEmpresaId;
+      } else if (domainInfo?.empresa_id) {
+        targetEmpresaId = domainInfo.empresa_id;
+      }
+
+      // Consultar empresa y sucursales
+      let queryEmpresa = supabase.from("empresas").select("*");
+      if (targetEmpresaId) {
+        queryEmpresa = queryEmpresa.eq("id", targetEmpresaId);
+      }
+      const { data: empData } = await queryEmpresa.limit(1).maybeSingle();
+
+      let querySucursales = supabase.from("sucursales").select("*").order("es_matriz", { ascending: false });
+      if (empData?.id) {
+        querySucursales = querySucursales.eq("empresa_id", empData.id);
+      }
+      const { data: sucData } = await querySucursales;
 
       if (empData) {
         const merged: EmpresaConfig = {
@@ -148,6 +220,10 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           color_sidebar: empData.color_sidebar || "#0F172A",
           margen_refacciones_default: Number(empData.margen_refacciones_default ?? 35),
           tasa_iva: Number(empData.tasa_iva ?? 16),
+          plan_suscripcion: empData.plan_suscripcion || "STARTER",
+          ambiente: empData.ambiente || "PRODUCTION",
+          activo: empData.activo !== false,
+          custom_metadata: empData.custom_metadata || {},
         };
         setEmpresa(merged);
         applyThemeCssVariables(merged.color_primario, merged.color_sidebar);
@@ -160,26 +236,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           setSucursalActivaIdState(savedBranch);
         } else if (savedBranch === "ALL") {
           setSucursalActivaIdState(null);
-        } else if (sucData.length > 0) {
-          setSucursalActivaIdState(null); // Por defecto vista consolidada o matriz
+        } else {
+          setSucursalActivaIdState(null);
         }
-      }
-
-      if (user) {
-        const { data: perfData } = await supabase
-          .from("perfiles")
-          .select("*")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        setPerfil({
-          id: user.id,
-          empresa_id: perfData?.empresa_id || empData?.id || DEFAULT_EMPRESA.id,
-          sucursal_id: perfData?.sucursal_id || null,
-          nombre: perfData?.nombre || user.user_metadata?.nombre || "Eduardo Cova",
-          rol: perfData?.rol || "Administrador",
-          email: user.email,
-        });
       }
     } catch (err) {
       console.error("Error loading tenant:", err);
@@ -190,6 +249,17 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     loadTenant();
+
+    const handleEmpresaChanged = () => {
+      loadTenant();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("autolisto:empresa_changed", handleEmpresaChanged);
+      return () => {
+        window.removeEventListener("autolisto:empresa_changed", handleEmpresaChanged);
+      };
+    }
   }, [loadTenant]);
 
   const setSucursalActivaId = (id: string | null) => {
@@ -226,6 +296,39 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       .eq("id", empresa.id);
   };
 
+  const switchEmpresa = async (targetEmpresaId: string) => {
+    const supabase = createClient();
+    const { data } = await supabase.from("empresas").select("*").eq("id", targetEmpresaId).maybeSingle();
+    if (data) {
+      const merged: EmpresaConfig = {
+        ...DEFAULT_EMPRESA,
+        ...data,
+        color_primario: data.color_primario || "#2563EB",
+        color_sidebar: data.color_sidebar || "#0F172A",
+        margen_refacciones_default: Number(data.margen_refacciones_default ?? 35),
+        tasa_iva: Number(data.tasa_iva ?? 16),
+        plan_suscripcion: data.plan_suscripcion || "STARTER",
+        ambiente: data.ambiente || "PRODUCTION",
+        activo: data.activo !== false,
+        custom_metadata: data.custom_metadata || {},
+      };
+      setEmpresa(merged);
+      applyThemeCssVariables(merged.color_primario, merged.color_sidebar);
+
+      // Cargar sucursales de esta empresa
+      const { data: sucData } = await supabase
+        .from("sucursales")
+        .select("*")
+        .eq("empresa_id", targetEmpresaId)
+        .order("es_matriz", { ascending: false });
+
+      if (sucData) {
+        setSucursales(sucData as Sucursal[]);
+        setSucursalActivaIdState(null);
+      }
+    }
+  };
+
   const sucursalActiva = sucursales.find((s) => s.id === sucursalActivaId) || null;
 
   return (
@@ -239,6 +342,10 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         loadingTenant,
         refreshTenant: loadTenant,
         updateBrandTheme,
+        customDomainInfo,
+        impersonation,
+        isSuperAdmin,
+        switchEmpresa,
       }}
     >
       {children}

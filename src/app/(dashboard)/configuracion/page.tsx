@@ -24,7 +24,9 @@ import {
   MapPin,
   Phone,
   Check,
+  Globe,
 } from "lucide-react";
+import CustomDomainModal from "@/components/hq/CustomDomainModal";
 
 type ConfigTab = "WhiteLabel" | "Sucursales" | "Personal" | "Pagos";
 
@@ -86,6 +88,7 @@ export default function ConfiguracionPage() {
     activa: true,
   });
   const [savingSucursal, setSavingSucursal] = useState(false);
+  const [isDomainModalOpen, setIsDomainModalOpen] = useState(false);
 
   // Tab 3: Equipo, Técnicos y Comisiones State
   const [empleados, setEmpleados] = useState<any[]>([]);
@@ -672,6 +675,30 @@ export default function ConfiguracionPage() {
                       Aprobar Presupuesto
                     </span>
                   </div>
+                </div>
+
+                {/* Custom Domain Management Card */}
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Globe size={16} className="text-primary" />
+                      <span className="text-xs font-bold text-slate-800">Dominio Personalizado & CNAME</span>
+                    </div>
+                    <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold uppercase">
+                      White-Label
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Apunta tu propio subdominio web (ej. <code className="text-slate-700 font-mono">taller.midominio.com</code>) para que tus clientes y mecánicos vean tu propia marca institucional.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsDomainModalOpen(true)}
+                    className="w-full mt-1 py-2 px-3 bg-white border border-slate-300 hover:border-primary text-slate-800 hover:text-primary rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                  >
+                    <Globe size={14} />
+                    <span>Configurar Dominios y DNS</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1536,6 +1563,16 @@ export default function ConfiguracionPage() {
             </form>
           </div>
         </div>
+      )}
+      {/* Modal Dominios Personalizados White-Label */}
+      {isDomainModalOpen && tenantEmpresa && (
+        <CustomDomainModal
+          isOpen={isDomainModalOpen}
+          onClose={() => setIsDomainModalOpen(false)}
+          empresaId={tenantEmpresa.id}
+          empresaNombre={tenantEmpresa.nombre_comercial}
+          onSaved={refreshTenant}
+        />
       )}
     </div>
   );

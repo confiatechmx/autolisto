@@ -20,12 +20,14 @@ import {
   Target,
   MessageSquare,
   Receipt,
+  ShieldCheck,
 } from "lucide-react";
 import { useTenant } from "@/context/TenantContext";
+import TenantSwitcher from "@/components/auth/TenantSwitcher";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { empresa } = useTenant();
+  const { empresa, isSuperAdmin } = useTenant();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const iconProps = { strokeWidth: 1.85, size: 18 };
@@ -75,34 +77,9 @@ export function Sidebar() {
           {isCollapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
         </button>
 
-        {/* Brand Header */}
-        <div className="flex items-center h-14 border-b border-white/10 px-3.5 shrink-0">
-          <Link href="/" className="flex items-center gap-2.5 text-white w-full overflow-hidden">
-            {empresa?.logo_url ? (
-              <img
-                src={empresa.logo_url}
-                alt={brandName}
-                className="w-8 h-8 rounded-md object-cover shrink-0 border border-white/15 bg-white"
-              />
-            ) : (
-              <div
-                style={{ backgroundColor: empresa?.color_primario || "#2563EB" }}
-                className="w-8 h-8 rounded-md flex items-center justify-center font-bold text-white text-xs shrink-0 tracking-wider shadow-inner"
-              >
-                {brandInitials || "AL"}
-              </div>
-            )}
-            {!isCollapsed && (
-              <div className="flex flex-col min-w-0">
-                <span className="font-semibold text-sm tracking-tight truncate leading-tight">
-                  {brandName}
-                </span>
-                <span className="text-[10px] text-slate-400 tracking-wider uppercase font-medium">
-                  {empresa?.eslogan || "Taller Mecánico"}
-                </span>
-              </div>
-            )}
-          </Link>
+        {/* Brand Header & Tenant Switcher */}
+        <div className="flex items-center h-14 border-b border-white/10 px-2 shrink-0">
+          <TenantSwitcher collapsed={isCollapsed} />
         </div>
 
         {/* Primary Quick Action (Shopmonkey + Order button) */}
@@ -237,8 +214,23 @@ export function Sidebar() {
           </div>
         </nav>
 
-        {/* Footer: Settings */}
-        <div className="p-2.5 border-t border-white/10 shrink-0">
+        {/* Footer: HQ Control Plane & Settings */}
+        <div className="p-2.5 border-t border-white/10 shrink-0 space-y-1">
+          {isSuperAdmin && (
+            <Link
+              href="/hq"
+              title={isCollapsed ? "Control HQ SaaS" : undefined}
+              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] transition-colors group ${
+                pathname.startsWith("/hq")
+                  ? "bg-blue-600/30 text-white font-medium border border-blue-500/40"
+                  : "text-blue-300/90 hover:text-white hover:bg-white/6 font-normal"
+              }`}
+            >
+              <ShieldCheck {...iconProps} className="shrink-0 text-blue-400 group-hover:text-white" />
+              {!isCollapsed && <span className="truncate font-semibold">Control HQ SaaS</span>}
+            </Link>
+          )}
+
           <Link
             href="/configuracion"
             title={isCollapsed ? "Configuración y Marca" : undefined}
@@ -320,6 +312,7 @@ export function Sidebar() {
                 ...operationItems,
                 ...commercialItems,
                 ...catalogAndFinanceItems,
+                ...(isSuperAdmin ? [{ href: "/hq", label: "Control HQ SaaS", icon: ShieldCheck }] : []),
                 { href: "/configuracion", label: "Configuración y Marca", icon: Settings },
               ].map((item) => (
                 <Link
