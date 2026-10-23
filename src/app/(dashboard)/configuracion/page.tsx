@@ -1073,15 +1073,37 @@ export default function ConfiguracionPage() {
                       className="w-5 h-5 rounded border-slate-300 text-primary cursor-pointer"
                     />
                     <div>
-                      <span
-                        className={`font-bold text-sm ${
-                          p.activo
-                            ? "text-slate-900"
-                            : "text-slate-400 line-through"
-                        }`}
-                      >
-                        {p.proveedor}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`font-bold text-sm ${
+                            p.activo
+                              ? "text-slate-900"
+                              : "text-slate-400 line-through"
+                          }`}
+                        >
+                          {p.proveedor}
+                        </span>
+                        {p.proveedor === "KueskiPay" && (
+                          <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            BNPL Quincenas
+                          </span>
+                        )}
+                        {p.proveedor === "Atrato" && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            BNPL Meses sin Tarjeta
+                          </span>
+                        )}
+                        {p.proveedor === "Stripe" && (
+                          <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            Tarjetas Visa / MC / Amex
+                          </span>
+                        )}
+                        {p.proveedor === "Mercado Pago" && (
+                          <span className="text-[10px] bg-sky-100 text-sky-700 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            TPV Point Smart & Link
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-400">
                         Disponible en Ventanilla de Caja y Expediente Operativo
                       </p>

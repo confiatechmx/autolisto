@@ -30,13 +30,14 @@ export function Sidebar() {
   const operationItems = [
     { href: "/", label: "Resumen Operativo", icon: LayoutDashboard },
     { href: "/tablero", label: "Workflow (Órdenes)", icon: Kanban },
+    { href: "/caja", label: "Caja / Punto de Venta (POS)", icon: Landmark },
     { href: "/clientes", label: "Clientes y Vehículos", icon: Contact },
   ];
 
   const catalogAndFinanceItems = [
     { href: "/inventario", label: "Inventario y Llantas", icon: Package2 },
     { href: "/servicios", label: "Catálogo Mano de Obra", icon: Wrench },
-    { href: "/caja", label: "Caja y Comisiones", icon: Landmark },
+    { href: "/caja?tab=Comisiones", label: "Nómina de Comisiones", icon: Landmark },
   ];
 
   const brandName = empresa?.nombre_comercial || "AutoListo";

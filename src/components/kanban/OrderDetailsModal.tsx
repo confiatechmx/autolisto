@@ -5,6 +5,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useTenant } from "@/context/TenantContext";
 import { generatePaymentLink } from "@/app/actions/payments";
+import { calcularCuotasBNPL } from "@/lib/bnpl";
+import { ReceiptModal } from "@/components/caja/ReceiptModal";
 import { OrderPrintSheet } from "./OrderPrintSheet";
 import {
   Loader2,
@@ -26,6 +28,7 @@ import {
   FileText,
   ClipboardCheck,
   Printer,
+  Receipt,
   ArrowRight,
   Calculator,
   TrendingUp,
@@ -192,6 +195,8 @@ export function OrderDetailsModal({ orderId, onClose, onUpdate }: OrderDetailsMo
 
   // Payments state
   const [isAddingPayment, setIsAddingPayment] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedReceiptPayment, setSelectedReceiptPayment] = useState<any>(null);
   const [paymentAmount, setPaymentAmount] = useState<string>("");
   const [paymentProvider, setPaymentProvider] = useState("Efectivo");
   const [paymentMetodoDetalle, setPaymentMetodoDetalle] = useState("Efectivo en Caja");
@@ -2496,13 +2501,27 @@ export function OrderDetailsModal({ orderId, onClose, onUpdate }: OrderDetailsMo
                             ${Number(p.monto_total).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
                           </td>
                           <td className="py-2.5 px-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => handleRemovePayment(p.id)}
-                              className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                title="Imprimir ticket"
+                                onClick={() => {
+                                  setSelectedReceiptPayment(p);
+                                  setShowReceiptModal(true);
+                                }}
+                                className="p-1 text-slate-500 hover:text-blue-600 cursor-pointer"
+                              >
+                                <Receipt size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                title="Eliminar pago"
+                                onClick={() => handleRemovePayment(p.id)}
+                                className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -2560,6 +2579,10 @@ export function OrderDetailsModal({ orderId, onClose, onUpdate }: OrderDetailsMo
                           setPaymentMetodoDetalle("Terminal Point Smart TPV");
                         else if (val === "Stripe")
                           setPaymentMetodoDetalle("Tarjeta Crédito / Débito");
+                        else if (val === "KueskiPay")
+                          setPaymentMetodoDetalle("Kueski Pay Quincenas");
+                        else if (val === "Atrato")
+                          setPaymentMetodoDetalle("Atrato Pago Mensualidades");
                       }}
                       className="w-full h-9 text-xs font-bold bg-white border border-slate-300 rounded-md px-2.5 text-slate-900"
                     >
@@ -2567,7 +2590,8 @@ export function OrderDetailsModal({ orderId, onClose, onUpdate }: OrderDetailsMo
                       <option value="Transferencia">🏦 Transferencia SPEI</option>
                       <option value="Mercado Pago">💳 Mercado Pago (Point / Link)</option>
                       <option value="Stripe">💳 Tarjeta Bancaria (Stripe)</option>
-                      <option value="KueskiPay">📱 Kueski Pay (BNPL)</option>
+                      <option value="KueskiPay">📱 Kueski Pay (BNPL Quincenas)</option>
+                      <option value="Atrato">⚡ Atrato Pago (BNPL Meses sin Tarjeta)</option>
                     </select>
                   </div>
                 </div>
@@ -2597,6 +2621,27 @@ export function OrderDetailsModal({ orderId, onClose, onUpdate }: OrderDetailsMo
                     />
                   </div>
                 </div>
+
+                {
+                ["KueskiPay", "Atrato"].includes(paymentProvider) && (
+                  <div className="bg-blue-50/60 border border-blue-200 rounded-lg p-3 text-xs space-y-2">
+                    <div className="flex items-center justify-between font-bold text-blue-900">
+                      <span>Plan {paymentProvider === "KueskiPay" ? "Kueski Pay (Quincenas)" : "Atrato Pago (Mensualidades)"}</span>
+                      <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Sin tarjeta</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      {calcularCuotasBNPL(
+                        Number(paymentAmount) || saldoPendiente || 1000,
+                        paymentProvider === "KueskiPay" ? "KueskiPay" : "Atrato"
+                      ).map((c, i) => (
+                        <div key={i} className="bg-white p-2 rounded border border-blue-100 flex justify-between items-center shadow-2xs">
+                          <span className="text-slate-600 font-medium">{c.plazo}</span>
+                          <span className="font-black text-slate-900 tabular-nums">${c.monto_cuota.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {["Mercado Pago", "KueskiPay", "Atrato"].includes(paymentProvider) && (
                   <div className="flex items-center gap-2 bg-slate-50 p-2 rounded border border-slate-200 text-xs">
@@ -2644,6 +2689,15 @@ export function OrderDetailsModal({ orderId, onClose, onUpdate }: OrderDetailsMo
             </div>
           </div>
         )}
+
+        <ReceiptModal
+          isOpen={showReceiptModal}
+          onClose={() => setShowReceiptModal(false)}
+          order={order}
+          payment={selectedReceiptPayment}
+          empresa={empresa}
+          sucursal={sucursalActiva}
+        />
 
         {/* TAB 4: HOJA DE RECEPCIÓN / IMPRESIÓN */}
         {activeTab === "impresion" && (

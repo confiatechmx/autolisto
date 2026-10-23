@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Search,
   Bell,
@@ -16,6 +17,7 @@ import {
   LogOut,
   ExternalLink,
   Plus,
+  Receipt,
 } from "lucide-react";
 import { useTenant, WHITE_LABEL_PRESETS } from "@/context/TenantContext";
 import { createClient } from "@/lib/supabase/client";
@@ -386,6 +388,16 @@ export function Topbar() {
 
       {/* Right Tools: White-Label Live Switcher, Alerts, Profile */}
       <div className="flex items-center gap-2.5">
+        {/* Caja / POS Direct Shortcut */}
+        <Link
+          href="/caja"
+          title="Terminal de Cobro Rápido (POS)"
+          className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer"
+        >
+          <Receipt size={14} className="text-emerald-700" />
+          <span>Caja POS</span>
+        </Link>
+
         {/* White-Label Live Customizer Pill */}
         <div ref={themeRef} className="relative">
           <button
