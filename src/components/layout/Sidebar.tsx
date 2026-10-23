@@ -11,6 +11,7 @@ import {
   Landmark,
   Settings,
   LayoutDashboard,
+  TrendingUp,
   Menu,
   X,
   ChevronLeft,
@@ -35,6 +36,7 @@ export function Sidebar() {
   ];
 
   const catalogAndFinanceItems = [
+    { href: "/reportes", label: "Reportes y Analítica (BI)", icon: TrendingUp },
     { href: "/inventario", label: "Inventario y Llantas", icon: Package2 },
     { href: "/servicios", label: "Catálogo Mano de Obra", icon: Wrench },
     { href: "/caja?tab=Comisiones", label: "Nómina de Comisiones", icon: Landmark },

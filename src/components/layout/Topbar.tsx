@@ -18,6 +18,7 @@ import {
   ExternalLink,
   Plus,
   Receipt,
+  TrendingUp,
 } from "lucide-react";
 import { useTenant, WHITE_LABEL_PRESETS } from "@/context/TenantContext";
 import { createClient } from "@/lib/supabase/client";
@@ -396,6 +397,14 @@ export function Topbar() {
         >
           <Receipt size={14} className="text-emerald-700" />
           <span>Caja POS</span>
+        </Link>
+        <Link
+          href="/reportes"
+          title="Reportes y Analítica (BI)"
+          className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-xs font-bold transition-colors cursor-pointer"
+        >
+          <TrendingUp size={14} className="text-sky-700" />
+          <span>Reportes</span>
         </Link>
 
         {/* White-Label Live Customizer Pill */}

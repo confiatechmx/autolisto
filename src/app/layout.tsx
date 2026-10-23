@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
+import { Toaster } from "sonner";
+import { RegisterServiceWorker } from "@/components/pwa/RegisterServiceWorker";
 
 const geist = Geist({
   subsets: ["latin"],
@@ -13,20 +15,19 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {
-  title: "Llantera Cova - Módulo Core Operativo",
-  description: "Sistema de gestión a la medida para Llantera Cova",
+  title: "Cova ERP - Sistema Operativo y Llantera",
+  description: "Sistema de gestión a la medida para taller automotriz y llantera",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "Cova ERP",
   },
 };
-
-import { Toaster } from 'sonner';
 
 export default function RootLayout({
   children,
@@ -37,6 +38,7 @@ export default function RootLayout({
     <html lang="es" className={`h-full antialiased ${geist.variable}`}>
       <body className="min-h-full flex flex-col">
         {children}
+        <RegisterServiceWorker />
         <Toaster position="top-right" richColors />
       </body>
     </html>

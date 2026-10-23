@@ -1,21 +1,50 @@
 {
-  "name": "Cova ERP - Llantera",
+  "id": "cova-erp-pwa",
+  "name": "Cova ERP - Sistema de Taller y Llantera",
   "short_name": "Cova ERP",
-  "description": "Sistema de Punto de Venta, CRM y Taller para Llantera Cova",
+  "description": "Sistema de Punto de Venta (POS), Workflow Operativo, Inspección DVI y Facturación",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "orientation": "any",
+  "background_color": "#0f172a",
   "theme_color": "#0ea5e9",
+  "categories": ["business", "productivity", "utilities"],
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Workflow (Órdenes)",
+      "short_name": "Tablero",
+      "description": "Ver órdenes de servicio activas en el taller",
+      "url": "/tablero",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Caja / Terminal POS",
+      "short_name": "Caja",
+      "description": "Cobro rápido y corte de caja",
+      "url": "/caja",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Reportes y BI",
+      "short_name": "Reportes",
+      "description": "Métricas y gráficas de facturación",
+      "url": "/reportes",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     }
   ]
 }
