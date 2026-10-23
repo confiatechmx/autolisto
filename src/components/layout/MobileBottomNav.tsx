@@ -9,7 +9,6 @@ import {
   Receipt,
   TrendingUp,
   Package2,
-  Contact,
 } from "lucide-react";
 import { useTenant } from "@/context/TenantContext";
 
@@ -58,7 +57,7 @@ export function MobileBottomNav() {
   return (
     <nav
       aria-label="Navegación Móvil y Tablet"
-      className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 text-slate-400 pb-[env(safe-area-inset-bottom)] shadow-lg select-none print:hidden"
+      className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 text-slate-400 pb-[env(safe-area-inset-bottom)] shadow-lg select-none print:hidden"
     >
       <div className="grid grid-cols-5 h-14 max-w-md mx-auto">
         {navItems.map((item) => {

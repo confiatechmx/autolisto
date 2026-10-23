@@ -35,9 +35,11 @@ import {
   FileSpreadsheet,
   AlertTriangle,
   Award,
+  CircleDot,
+  CheckCircle2,
 } from "lucide-react";
 
-type DateRange = "7d" | "30d" | "month" | "last_month" | "year";
+type DateRange = "7d" | "30d" | "month" | "year";
 
 const PIE_COLORS = ["#0284c7", "#10b981", "#f59e0b", "#6366f1"];
 
@@ -152,42 +154,46 @@ export default function ReportesPage() {
     fetchReportData();
   }, [fetchReportData]);
 
-  // Date Range Filtering
+  // Date Range Filtering (with timezone end-of-day safety)
   const filteredData = useMemo(() => {
     const now = new Date();
-    let startDate = new Date();
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
 
+    let startDate = new Date();
     if (dateRange === "7d") {
       startDate.setDate(now.getDate() - 7);
+      startDate.setHours(0, 0, 0, 0);
     } else if (dateRange === "30d") {
       startDate.setDate(now.getDate() - 30);
+      startDate.setHours(0, 0, 0, 0);
     } else if (dateRange === "month") {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else if (dateRange === "last_month") {
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
     } else if (dateRange === "year") {
-      startDate = new Date(now.getFullYear(), 0, 1);
+      startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
     }
 
     const filteredOrders = ordenes.filter((o) => {
       const d = new Date(o.fecha_ingreso);
-      return d >= startDate && d <= now;
+      return d >= startDate && d <= endOfDay;
     });
 
     const filteredPayments = pagos.filter((p) => {
       const d = new Date(p.fecha_pago);
-      return d >= startDate && d <= now;
+      return d >= startDate && d <= endOfDay;
     });
 
     const filteredDeferred = diferidos.filter((d) => {
       const dt = new Date(d.created_at);
-      return dt >= startDate && dt <= now;
+      return dt >= startDate && dt <= endOfDay;
     });
 
     return {
       orders: filteredOrders,
       payments: filteredPayments,
       deferred: filteredDeferred,
+      startDate,
+      endDate: endOfDay,
     };
   }, [ordenes, pagos, diferidos, dateRange]);
 
@@ -314,19 +320,38 @@ export default function ReportesPage() {
     };
   }, [filteredData]);
 
-  // Temporal Trend Chart Data (Grouped by Date)
+  // Continuous Temporal Trend Chart (Pre-fills days so charts never look empty or single-point)
   const temporalTrendData = useMemo(() => {
-    const { orders, payments } = filteredData;
-    const dateMap: Record<string, { fecha: string; ventas: number; cobrado: number }> = {};
+    const { orders, payments, startDate, endDate } = filteredData;
+    const seriesMap: Map<string, { fecha: string; timestamp: number; ventas: number; cobrado: number }> = new Map();
 
-    orders.forEach((o) => {
-      const dateKey = new Date(o.fecha_ingreso).toLocaleDateString("es-MX", {
+    const formatDateKey = (date: Date) => {
+      return date.toLocaleDateString("es-MX", {
         month: "short",
         day: "numeric",
       });
-      if (!dateMap[dateKey]) {
-        dateMap[dateKey] = { fecha: dateKey, ventas: 0, cobrado: 0 };
-      }
+    };
+
+    // 1. Initialize continuous days for the selected range (7 or 14 points min)
+    const pointsCount = dateRange === "7d" ? 7 : dateRange === "30d" ? 15 : 12;
+    const stepDays = dateRange === "7d" ? 1 : dateRange === "30d" ? 2 : 30;
+
+    for (let i = pointsCount - 1; i >= 0; i--) {
+      const cur = new Date();
+      cur.setDate(cur.getDate() - i * stepDays);
+      const key = formatDateKey(cur);
+      seriesMap.set(key, {
+        fecha: key,
+        timestamp: cur.getTime(),
+        ventas: 0,
+        cobrado: 0,
+      });
+    }
+
+    // 2. Aggregate Orders into continuous timeline
+    orders.forEach((o) => {
+      const d = new Date(o.fecha_ingreso);
+      const key = formatDateKey(d);
       const srv = (o.orden_servicio_servicios || []).reduce(
         (a: number, s: any) => a + Number(s.precio_cobrado || 0),
         0
@@ -336,37 +361,51 @@ export default function ReportesPage() {
           a + Number(r.subtotal ?? Number(r.cantidad || 1) * Number(r.precio_unitario || 0)),
         0
       );
-      dateMap[dateKey].ventas += srv + ref;
-    });
+      const totalOrder = srv + ref;
 
-    payments.forEach((p) => {
-      const dateKey = new Date(p.fecha_pago).toLocaleDateString("es-MX", {
-        month: "short",
-        day: "numeric",
-      });
-      if (!dateMap[dateKey]) {
-        dateMap[dateKey] = { fecha: dateKey, ventas: 0, cobrado: 0 };
+      if (!seriesMap.has(key)) {
+        seriesMap.set(key, { fecha: key, timestamp: d.getTime(), ventas: totalOrder, cobrado: 0 });
+      } else {
+        const item = seriesMap.get(key)!;
+        item.ventas += totalOrder;
       }
-      dateMap[dateKey].cobrado += Number(p.monto_total || 0);
     });
 
-    return Object.values(dateMap).slice(-14);
-  }, [filteredData]);
+    // 3. Aggregate Payments into continuous timeline
+    payments.forEach((p) => {
+      const d = new Date(p.fecha_pago);
+      const key = formatDateKey(d);
+      const monto = Number(p.monto_total || 0);
+
+      if (!seriesMap.has(key)) {
+        seriesMap.set(key, { fecha: key, timestamp: d.getTime(), ventas: 0, cobrado: monto });
+      } else {
+        const item = seriesMap.get(key)!;
+        item.cobrado += monto;
+      }
+    });
+
+    // Convert map to sorted array by timestamp
+    const sorted = Array.from(seriesMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+    return sorted.slice(-15);
+  }, [filteredData, dateRange]);
 
   // Revenue Mix Chart Data
   const revenueMixData = useMemo(() => {
-    return [
+    const list = [
       { name: "Mano de Obra", value: Math.round(metrics.totalManoObra) },
       { name: "Refacciones", value: Math.round(metrics.totalRefacciones) },
       { name: "Llantas y Rines", value: Math.round(metrics.totalLlantas) },
     ].filter((item) => item.value > 0);
+
+    return list.length > 0 ? list : [{ name: "Sin Facturación", value: 1 }];
   }, [metrics]);
 
   // Mechanic Productivity Chart Data
   const mechanicChartData = useMemo(() => {
     const { orders } = filteredData;
 
-    return mecanicos.map((mec) => {
+    const list = mecanicos.map((mec) => {
       let horas = 0;
       let totalVendidoMec = 0;
 
@@ -389,6 +428,13 @@ export default function ReportesPage() {
         comision: Math.round(comision),
       };
     });
+
+    return list.length > 0
+      ? list
+      : [
+          { nombre: "Técnico 1", horas: 0, manoObra: 0, comision: 0 },
+          { nombre: "Técnico 2", horas: 0, manoObra: 0, comision: 0 },
+        ];
   }, [filteredData, mecanicos]);
 
   // Payment Provider Breakdown
@@ -409,7 +455,7 @@ export default function ReportesPage() {
     }));
   }, [filteredData]);
 
-  // Export CSV
+  // Export CSV with UTF-8 BOM for Microsoft Excel
   const handleExportCSV = () => {
     const { orders } = filteredData;
     const headers = ["Folio,Fecha,Vehiculo,Total_ManoObra,Total_Refacciones,GranTotal,Estatus"];
@@ -427,14 +473,17 @@ export default function ReportesPage() {
       return `#${1000 + Number(o.folio || 1)},"${new Date(o.fecha_ingreso).toISOString().slice(0, 10)}","${veh}",${srv},${ref},${srv + ref},"${o.estado}"`;
     });
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
-    const encodedUri = encodeURI(csvContent);
+    // UTF-8 BOM \uFEFF to fix accents in Excel
+    const csvContent = "\uFEFF" + [headers, ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `reporte_financiero_${dateRange}_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -649,7 +698,7 @@ export default function ReportesPage() {
           </div>
 
           <div className="h-64 sm:h-72 w-full">
-            {isMounted && temporalTrendData.length > 0 ? (
+            {isMounted ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={temporalTrendData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                   <defs>
@@ -671,7 +720,10 @@ export default function ReportesPage() {
                     tickFormatter={(val) => `$${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}`}
                   />
                   <Tooltip
-                    formatter={(value: any) => [`$${Number(value).toLocaleString("es-MX")}`, ""]}
+                    formatter={(value: any, name: any) => [
+                      `$${Number(value).toLocaleString("es-MX")}`,
+                      name === "ventas" ? "Facturado" : "Cobrado",
+                    ]}
                     contentStyle={{
                       backgroundColor: "#0f172a",
                       color: "#fff",
@@ -702,7 +754,7 @@ export default function ReportesPage() {
               </ResponsiveContainer>
             ) : (
               <div className="h-full flex items-center justify-center text-xs text-slate-400">
-                Sin movimientos en este período seleccionado.
+                Cargando métricas temporales...
               </div>
             )}
           </div>
@@ -720,7 +772,7 @@ export default function ReportesPage() {
           </div>
 
           <div className="h-52 w-full my-auto flex items-center justify-center">
-            {isMounted && revenueMixData.length > 0 ? (
+            {isMounted && (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -748,8 +800,6 @@ export default function ReportesPage() {
                   />
                 </PieChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="text-xs text-slate-400">Sin datos de facturación</div>
             )}
           </div>
 
@@ -803,7 +853,7 @@ export default function ReportesPage() {
           </div>
 
           <div className="h-64 w-full">
-            {isMounted && mechanicChartData.length > 0 ? (
+            {isMounted ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={mechanicChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -834,7 +884,7 @@ export default function ReportesPage() {
               </ResponsiveContainer>
             ) : (
               <div className="h-full flex items-center justify-center text-xs text-slate-400">
-                Sin registros de técnicos en este período
+                Cargando datos de mecánicos...
               </div>
             )}
           </div>
@@ -903,56 +953,62 @@ export default function ReportesPage() {
             </p>
           </div>
           <span className="text-xs font-bold text-slate-500">
-            {metrics.sortedTopItems.length} ítems principales
+            {metrics.sortedTopItems.length} conceptos analizados
           </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/75 text-[10px] uppercase font-bold text-slate-500">
-                <th className="py-3 px-4">#</th>
-                <th className="py-3 px-4">Concepto</th>
-                <th className="py-3 px-4">Categoría</th>
-                <th className="py-3 px-4 text-center">Unidades / Servicios</th>
-                <th className="py-3 px-4 text-right">Facturación Generada</th>
-                <th className="py-3 px-4 text-right">% del Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {metrics.sortedTopItems.map((item, idx) => {
-                const pct = metrics.totalVendido > 0 ? (item.total / metrics.totalVendido) * 100 : 0;
-                return (
-                  <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-slate-400">{idx + 1}</td>
-                    <td className="py-3 px-4 font-bold text-slate-900">{item.nombre}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          item.tipo === "Servicio"
-                            ? "bg-sky-100 text-sky-800"
-                            : item.tipo === "Llanta"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-emerald-100 text-emerald-800"
-                        }`}
-                      >
-                        {item.tipo}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center font-bold text-slate-700 tabular-nums">
-                      {item.count}
-                    </td>
-                    <td className="py-3 px-4 text-right font-black text-slate-900 tabular-nums">
-                      ${item.total.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3 px-4 text-right font-semibold text-slate-500 tabular-nums">
-                      {pct.toFixed(1)}%
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {metrics.sortedTopItems.length > 0 ? (
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/75 text-[10px] uppercase font-bold text-slate-500">
+                  <th className="py-3 px-4">#</th>
+                  <th className="py-3 px-4">Concepto</th>
+                  <th className="py-3 px-4">Categoría</th>
+                  <th className="py-3 px-4 text-center">Unidades / Servicios</th>
+                  <th className="py-3 px-4 text-right">Facturación Generada</th>
+                  <th className="py-3 px-4 text-right">% del Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {metrics.sortedTopItems.map((item, idx) => {
+                  const pct = metrics.totalVendido > 0 ? (item.total / metrics.totalVendido) * 100 : 0;
+                  return (
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-400">{idx + 1}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900">{item.nombre}</td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            item.tipo === "Servicio"
+                              ? "bg-sky-100 text-sky-800"
+                              : item.tipo === "Llanta"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-emerald-100 text-emerald-800"
+                          }`}
+                        >
+                          {item.tipo}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center font-bold text-slate-700 tabular-nums">
+                        {item.count}
+                      </td>
+                      <td className="py-3 px-4 text-right font-black text-slate-900 tabular-nums">
+                        ${item.total.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3 px-4 text-right font-semibold text-slate-500 tabular-nums">
+                        {pct.toFixed(1)}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="p-8 text-center text-xs text-slate-400">
+              No hay conceptos facturados en este rango de fechas.
+            </div>
+          )}
         </div>
       </div>
 
@@ -975,6 +1031,11 @@ export default function ReportesPage() {
               <div className="text-[10px] text-slate-400 mt-0.5">{p.count} transacciones</div>
             </div>
           ))}
+          {paymentProviderStats.length === 0 && (
+            <div className="col-span-full text-center py-4 text-xs text-slate-400">
+              Sin cobros registrados en este período.
+            </div>
+          )}
         </div>
       </div>
     </div>
