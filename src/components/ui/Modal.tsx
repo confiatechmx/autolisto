@@ -8,48 +8,72 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   description?: string;
+  size?: "md" | "lg" | "xl" | "2xl" | "full";
   children: React.ReactNode;
 }
 
-export function Modal({ isOpen, onClose, title, description, children }: ModalProps) {
+const sizeClasses: Record<NonNullable<ModalProps["size"]>, string> = {
+  md: "max-w-lg",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
+  "2xl": "max-w-6xl",
+  full: "max-w-[96vw] xl:max-w-7xl",
+};
+
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  description,
+  size = "lg",
+  children,
+}: ModalProps) {
   const [isRendered, setIsRendered] = useState(isOpen);
-  
+
   useEffect(() => {
     if (isOpen) setIsRendered(true);
   }, [isOpen]);
-  
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === "Escape") onClose();
     };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
   }, [onClose]);
 
   if (!isRendered && !isOpen) return null;
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-300 ease-in-out ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-      <div 
-        className="absolute inset-0 backdrop-blur-sm bg-zinc-900/40"
+    <div
+      className={`fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 transition-opacity duration-200 ease-out no-print ${
+        isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+      }`}
+    >
+      <div
+        className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]"
         onClick={onClose}
       />
-      
-      <div 
-        className={`relative w-full max-w-2xl bg-zinc-50 shadow-2xl rounded-2xl flex flex-col max-h-[90vh] overflow-hidden transform transition-all duration-300 ease-out ${isOpen ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}
-        onTransitionEnd={() => { if (!isOpen) setIsRendered(false); }}
+
+      <div
+        className={`relative w-full ${sizeClasses[size]} bg-white shadow-2xl border border-slate-200 rounded-lg flex flex-col max-h-[92vh] overflow-hidden transform transition-all duration-200 ease-out ${
+          isOpen ? "scale-100 translate-y-0" : "scale-95 translate-y-2"
+        }`}
+        onTransitionEnd={() => {
+          if (!isOpen) setIsRendered(false);
+        }}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-zinc-200 bg-white flex items-center justify-between shrink-0">
+        <div className="px-5 py-3.5 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-900">{title}</h2>
-            {description && <p className="text-sm text-zinc-500 mt-1">{description}</p>}
+            <h2 className="text-sm font-bold text-slate-900 tracking-tight">{title}</h2>
+            {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
           </div>
-          <button 
+          <button
             onClick={onClose}
-            className="text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 p-2 rounded-lg transition-colors"
+            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-1.5 rounded-md transition-colors cursor-pointer"
           >
-            <X size={20} strokeWidth={1.5} />
+            <X size={18} strokeWidth={1.75} />
           </button>
         </div>
 
