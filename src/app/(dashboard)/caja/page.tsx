@@ -9,6 +9,18 @@ import QRCode from "qrcode";
 import { ReceiptModal } from "@/components/caja/ReceiptModal";
 import { SplitPaymentManager } from "@/components/caja/SplitPaymentManager";
 import { MultiPaymentService, PaymentSplitItem } from "@/services/multiPaymentService";
+import { TurnoStatusBar } from "@/components/caja/TurnoStatusBar";
+import { AbrirTurnoModal } from "@/components/caja/AbrirTurnoModal";
+import { TraspasoFondosModal } from "@/components/caja/TraspasoFondosModal";
+import { CorteCiegoModal } from "@/components/caja/CorteCiegoModal";
+import { TicketCierreModal } from "@/components/caja/TicketCierreModal";
+import {
+  CajaTurnoService,
+  CajaTurno,
+  CajaFondo,
+  CuentaBancaria,
+} from "@/services/cajaTurnoService";
+
 import { simularCuotasBNPL, CuotaSimulation } from "@/app/actions/payments";
 import {
   Loader2,
@@ -61,6 +73,20 @@ export default function CajaPage() {
   const [configPagos, setConfigPagos] = useState<any[]>([]);
 
   // POS State
+  // Turno & Fondos State
+  const [turnoActivo, setTurnoActivo] = useState<CajaTurno | null>(null);
+  const [fondos, setFondos] = useState<CajaFondo[]>([]);
+  const [cuentasBancarias, setCuentasBancarias] = useState<CuentaBancaria[]>([]);
+  const [historialTurnos, setHistorialTurnos] = useState<CajaTurno[]>([]);
+  const [selectedCuentaBancariaId, setSelectedCuentaBancariaId] = useState<string>("");
+
+  // Modales de Turno y Corte
+  const [isAbrirTurnoOpen, setIsAbrirTurnoOpen] = useState(false);
+  const [isTraspasoOpen, setIsTraspasoOpen] = useState(false);
+  const [isCorteOpen, setIsCorteOpen] = useState(false);
+  const [ticketCierreOpen, setTicketCierreOpen] = useState(false);
+  const [cierreTicketData, setCierreTicketData] = useState<any | null>(null);
+
   const [posSelectedOrderId, setPosSelectedOrderId] = useState<string | null>(null);
   const [posSearchQuery, setPosSearchQuery] = useState("");
   const [posStatusFilter, setPosStatusFilter] = useState<"ALL" | "READY" | "PARTIAL">("ALL");
@@ -220,7 +246,12 @@ export default function CajaPage() {
         movQuery = movQuery.eq("sucursal_id", sucursalActiva.id);
       }
 
-      const [ordRes, pagRes, movRes, empRes, cfgRes] = await Promise.all([
+      const targetSucId =
+        sucursalActiva?.id ||
+        sucursales[0]?.id ||
+        "b0000000-0000-0000-0000-000000000001";
+
+      const [ordRes, pagRes, movRes, empRes, cfgRes, shiftRes, fondosRes, bankRes, histRes] = await Promise.all([
         ordQuery,
         pagosQuery,
         movQuery,
@@ -230,7 +261,19 @@ export default function CajaPage() {
           .eq("rol", "Mecánico")
           .order("nombre"),
         supabase.from("configuracion_pagos").select("*"),
+        CajaTurnoService.obtenerTurnoActivo(targetSucId),
+        CajaTurnoService.obtenerFondos(targetSucId, empresa?.id),
+        CajaTurnoService.obtenerCuentasBancarias(empresa?.id || "a0000000-0000-0000-0000-000000000001", targetSucId),
+        CajaTurnoService.obtenerHistorialTurnos(targetSucId),
       ]);
+
+      setTurnoActivo(shiftRes);
+      setFondos(fondosRes);
+      setCuentasBancarias(bankRes);
+      setHistorialTurnos(histRes);
+      if (bankRes.length > 0 && !selectedCuentaBancariaId) {
+        setSelectedCuentaBancariaId(bankRes[0].id);
+      }
 
       if (ordRes.data) {
         const enriched = ordRes.data.map((order: any) => {
@@ -535,6 +578,7 @@ export default function CajaPage() {
         sucursales[0]?.id ||
         "b0000000-0000-0000-0000-000000000001";
 
+      const f1Operativo = fondos.find((f) => f.tipo === "OPERATIVO") || fondos[0];
       const { data: newPago, error: pagoErr } = await supabase
         .from("pagos_orden")
         .insert({
@@ -547,6 +591,9 @@ export default function CajaPage() {
           estatus: "Aprobado",
           comision_pasarela: comisionMonto,
           fecha_pago: new Date().toISOString(),
+          cuenta_bancaria_id: selectedMethod === "SPEI" ? selectedCuentaBancariaId || null : null,
+          caja_turno_id: turnoActivo?.id || null,
+          caja_fondo_id: selectedMethod === "Efectivo" ? f1Operativo?.id || null : null,
         })
         .select()
         .single();
@@ -781,6 +828,18 @@ export default function CajaPage() {
             </div>
           </div>
         </header>
+
+        {/* Turno & Arqueo Ciego Status Bar */}
+        <div className="px-5 pt-3 pb-1 w-full">
+          <TurnoStatusBar
+            turnoActivo={turnoActivo}
+            fondos={fondos}
+            loading={loading}
+            onAbrirTurno={() => setIsAbrirTurnoOpen(true)}
+            onHacerCorte={() => setIsCorteOpen(true)}
+            onTraspaso={() => setIsTraspasoOpen(true)}
+          />
+        </div>
 
         <nav className="flex items-center px-5 gap-6 w-full overflow-x-auto border-t border-slate-100">
           <button
@@ -1246,6 +1305,7 @@ export default function CajaPage() {
                             payments={splitPayments}
                             onChange={setSplitPayments}
                             disabled={isProcessingPayment}
+                            cuentasBancarias={cuentasBancarias}
                           />
                         </div>
                       )}
@@ -1369,30 +1429,84 @@ export default function CajaPage() {
                         </div>
                       )}
 
-                      {/* 3. SPEI BANCARIO */}
+                      {/* 3. SPEI BANCARIO MULTI-CUENTA */}
                       {selectedMethod === "SPEI" && (
                         <div className="flex flex-col gap-3">
-                          <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="text-xs">
-                              <p className="font-bold text-blue-950">Datos para Transferencia SPEI:</p>
-                              <p className="text-blue-900 mt-0.5">
-                                Banco: <strong>BBVA México</strong> • Beneficiario:{" "}
-                                <strong>Torque & Ruta S.A. de C.V.</strong>
-                              </p>
-                              <p className="font-mono text-xs font-bold text-blue-950 mt-1">
-                                CLABE: 012 180 01548291024 8
-                              </p>
-                            </div>
+                          {cuentasBancarias && cuentasBancarias.length > 0 ? (
+                            <div className="flex flex-col gap-2">
+                              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                                Cuenta Receptora del Taller (Conciliación Espejo):
+                              </label>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                {cuentasBancarias.map((cta) => {
+                                  const isSel = selectedCuentaBancariaId === cta.id;
+                                  return (
+                                    <div
+                                      key={cta.id}
+                                      onClick={() => setSelectedCuentaBancariaId(cta.id)}
+                                      className={`cursor-pointer p-2.5 rounded-xl border text-left transition-all bg-white ${
+                                        isSel
+                                          ? "border-blue-600 bg-blue-50/40 ring-2 ring-blue-600/20"
+                                          : "border-slate-200 hover:border-slate-300"
+                                      }`}
+                                    >
+                                      <div className="flex justify-between items-center">
+                                        <span className="font-bold text-xs text-slate-900 block truncate">
+                                          {cta.alias}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1 rounded">
+                                          {cta.banco}
+                                        </span>
+                                      </div>
+                                      <span className="font-mono text-[10px] text-slate-500 block mt-1 truncate">
+                                        {cta.clabe || cta.numero_cuenta || "Sin CLABE"}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
 
-                            <button
-                              type="button"
-                              onClick={copyClabeToClipboard}
-                              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shrink-0 self-start sm:self-auto transition-colors"
-                            >
-                              {copiedClabe ? <Check size={14} /> : <Copy size={14} />}
-                              {copiedClabe ? "¡CLABE Copiada!" : "Copiar CLABE"}
-                            </button>
-                          </div>
+                              {/* Active Account Details Banner */}
+                              {(() => {
+                                const activeCta =
+                                  cuentasBancarias.find((c) => c.id === selectedCuentaBancariaId) ||
+                                  cuentasBancarias[0];
+                                return (
+                                  <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1">
+                                    <div className="text-xs">
+                                      <p className="font-bold text-blue-950">
+                                        {activeCta.alias} ({activeCta.banco})
+                                      </p>
+                                      <p className="text-blue-900 text-[11px]">
+                                        Titular: <strong>{activeCta.titular || "Cova Tires"}</strong>
+                                      </p>
+                                      <p className="font-mono text-xs font-bold text-blue-950 mt-0.5">
+                                        CLABE: {activeCta.clabe || "012580001394829102"}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (activeCta.clabe) {
+                                          navigator.clipboard.writeText(activeCta.clabe);
+                                          setCopiedClabe(true);
+                                          setTimeout(() => setCopiedClabe(false), 2000);
+                                        }
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shrink-0 transition-colors"
+                                    >
+                                      {copiedClabe ? <Check size={14} /> : <Copy size={14} />}
+                                      {copiedClabe ? "¡Copiada!" : "Copiar CLABE"}
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-900">
+                              No hay cuentas bancarias configuradas.
+                            </div>
+                          )}
 
                           <div>
                             <label className="text-[11px] font-bold text-slate-600 block mb-1">
@@ -1763,6 +1877,147 @@ export default function CajaPage() {
                 </div>
               </div>
             </div>
+
+            {/* Historial de Turnos y Cortes de Caja (Cierre Z) */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <Receipt size={16} className="text-emerald-600" />
+                    Historial de Turnos y Cortes de Caja (Cierre Z) ({historialTurnos.length})
+                  </h2>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Auditoría inmutable de cierres, arqueos de gaveta, remesas y desviaciones
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="py-3 px-4">Fecha Apertura / Cierre</th>
+                      <th className="py-3 px-4">Fondo 1 (Operativo)</th>
+                      <th className="py-3 px-4">Fondo 2 (Reserva)</th>
+                      <th className="py-3 px-4 text-center">Variación</th>
+                      <th className="py-3 px-4 text-right">Remesa Retirada</th>
+                      <th className="py-3 px-4 text-center">Estado</th>
+                      <th className="py-3 px-4 text-right">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {historialTurnos.length > 0 ? (
+                      historialTurnos.map((t) => {
+                        const f1Dec = Number(t.monto_cierre_declarado_f1 ?? t.monto_apertura_fondo1);
+                        const dif1 = Number(t.diferencia_f1 || 0);
+                        const isCuadrado = Math.abs(dif1) <= 10;
+                        const fApertura = new Date(t.fecha_apertura).toLocaleDateString("es-MX", {
+                          day: "2-digit",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        });
+                        const fCierre = t.fecha_cierre
+                          ? new Date(t.fecha_cierre).toLocaleTimeString("es-MX", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : null;
+
+                        return (
+                          <tr key={t.id} className="hover:bg-slate-50/50">
+                            <td className="py-3 px-4">
+                              <span className="font-bold text-slate-900 block">{fApertura}</span>
+                              <span className="text-[10px] text-slate-400">
+                                {fCierre ? `Cierre: ${fCierre}` : "Turno Abierto"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-bold tabular-nums block">
+                                ${f1Dec.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                Inicial: ${Number(t.monto_apertura_fondo1).toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-bold tabular-nums block">
+                                ${Number(t.monto_cierre_declarado_f2 ?? t.monto_apertura_fondo2).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                Inicial: ${Number(t.monto_apertura_fondo2).toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span
+                                className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  isCuadrado
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : dif1 > 0
+                                    ? "bg-blue-100 text-blue-800"
+                                    : "bg-rose-100 text-rose-800"
+                                }`}
+                              >
+                                {isCuadrado
+                                  ? "✓ Cuadrado"
+                                  : dif1 > 0
+                                  ? `+${dif1.toFixed(2)}`
+                                  : `-${Math.abs(dif1).toFixed(2)}`}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right font-bold tabular-nums text-slate-900">
+                              ${Number(t.monto_remesa_retirada || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                  t.estado === "ABIERTO"
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-slate-100 text-slate-700"
+                                }`}
+                              >
+                                {t.estado}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {t.estado === "CERRADO" && (
+                                <button
+                                  onClick={() => {
+                                    setCierreTicketData({
+                                      turno_id: t.id,
+                                      declaradoF1: t.monto_cierre_declarado_f1,
+                                      declaradoF2: t.monto_cierre_declarado_f2,
+                                      teoricoF1: t.monto_cierre_teorico_f1,
+                                      teoricoF2: t.monto_cierre_teorico_f2,
+                                      diferenciaF1: t.diferencia_f1,
+                                      diferenciaF2: t.diferencia_f2,
+                                      remesa: t.monto_remesa_retirada,
+                                      fondoSiguiente: t.monto_fondo_siguiente_f1,
+                                      resumenTeorico: t.snapshot_resumen,
+                                    });
+                                    setTicketCierreOpen(true);
+                                  }}
+                                  className="text-[11px] font-bold text-primary hover:underline inline-flex items-center gap-1"
+                                >
+                                  <Printer size={12} />
+                                  <span>Ticket Z</span>
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-6 text-center text-xs text-slate-400">
+                          No hay turnos cerrados en el historial de esta sucursal.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2005,6 +2260,55 @@ export default function CajaPage() {
           </div>
         </div>
       )}
+      {/* Modal: Apertura de Turno */}
+      <AbrirTurnoModal
+        isOpen={isAbrirTurnoOpen}
+        onClose={() => setIsAbrirTurnoOpen(false)}
+        onSuccess={loadData}
+        empresaId={empresa?.id || "a0000000-0000-0000-0000-000000000001"}
+        sucursalId={sucursalActiva?.id || sucursales[0]?.id || "b0000000-0000-0000-0000-000000000001"}
+        usuarioId="b001bc99-9c0b-4ef8-bb6d-6bb9bd380e51"
+        fondos={fondos}
+      />
+
+      {/* Modal: Traspaso de Fondos */}
+      {turnoActivo && (
+        <TraspasoFondosModal
+          isOpen={isTraspasoOpen}
+          onClose={() => setIsTraspasoOpen(false)}
+          onSuccess={loadData}
+          turnoActivo={turnoActivo}
+          fondos={fondos}
+          usuarioId="b001bc99-9c0b-4ef8-bb6d-6bb9bd380e51"
+        />
+      )}
+
+      {/* Modal: Corte Ciego de Turno (Cierre Z) */}
+      {turnoActivo && (
+        <CorteCiegoModal
+          isOpen={isCorteOpen}
+          onClose={() => setIsCorteOpen(false)}
+          onSuccess={(cierreResult) => {
+            setCierreTicketData(cierreResult);
+            setTicketCierreOpen(true);
+            loadData();
+          }}
+          turnoActivo={turnoActivo}
+          fondos={fondos}
+          cuentasBancarias={cuentasBancarias}
+          usuarioId="b001bc99-9c0b-4ef8-bb6d-6bb9bd380e51"
+        />
+      )}
+
+      {/* Modal: Ticket Térmico de Cierre Z */}
+      <TicketCierreModal
+        isOpen={ticketCierreOpen}
+        onClose={() => setTicketCierreOpen(false)}
+        cierreData={cierreTicketData}
+        empresaNombre={empresa?.nombre_comercial || "Cova Tires"}
+        sucursalNombre={sucursalActiva?.nombre || "Matriz San Pedro"}
+        cajeroNombre="Alejandro Villarreal"
+      />
     </div>
   );
 }

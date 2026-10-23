@@ -14,8 +14,139 @@ export type Database = {
   }
   public: {
     Tables: {
+      caja_arqueos_denominaciones: {
+        Row: {
+          b100: number
+          b1000: number
+          b20: number
+          b200: number
+          b50: number
+          b500: number
+          centavos: number
+          created_at: string
+          fondo_id: string
+          id: string
+          m1: number
+          m10: number
+          m2: number
+          m20: number
+          m5: number
+          total_calculado: number
+          turno_id: string
+        }
+        Insert: {
+          b100?: number
+          b1000?: number
+          b20?: number
+          b200?: number
+          b50?: number
+          b500?: number
+          centavos?: number
+          created_at?: string
+          fondo_id: string
+          id?: string
+          m1?: number
+          m10?: number
+          m2?: number
+          m20?: number
+          m5?: number
+          total_calculado?: number
+          turno_id: string
+        }
+        Update: {
+          b100?: number
+          b1000?: number
+          b20?: number
+          b200?: number
+          b50?: number
+          b500?: number
+          centavos?: number
+          created_at?: string
+          fondo_id?: string
+          id?: string
+          m1?: number
+          m10?: number
+          m2?: number
+          m20?: number
+          m5?: number
+          total_calculado?: number
+          turno_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caja_arqueos_denominaciones_fondo_id_fkey"
+            columns: ["fondo_id"]
+            isOneToOne: false
+            referencedRelation: "caja_fondos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_arqueos_denominaciones_turno_id_fkey"
+            columns: ["turno_id"]
+            isOneToOne: false
+            referencedRelation: "caja_turnos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      caja_fondos: {
+        Row: {
+          activo: boolean
+          created_at: string
+          empresa_id: string
+          id: string
+          nombre: string
+          saldo_actual: number
+          saldo_minimo_alerta: number | null
+          sucursal_id: string | null
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          activo?: boolean
+          created_at?: string
+          empresa_id: string
+          id?: string
+          nombre: string
+          saldo_actual?: number
+          saldo_minimo_alerta?: number | null
+          sucursal_id?: string | null
+          tipo?: string
+          updated_at?: string
+        }
+        Update: {
+          activo?: boolean
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          nombre?: string
+          saldo_actual?: number
+          saldo_minimo_alerta?: number | null
+          sucursal_id?: string | null
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caja_fondos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_fondos_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       caja_movimientos: {
         Row: {
+          caja_fondo_id: string | null
+          caja_turno_id: string | null
           concepto: string
           created_at: string
           empresa_id: string
@@ -28,6 +159,8 @@ export type Database = {
           tipo: string
         }
         Insert: {
+          caja_fondo_id?: string | null
+          caja_turno_id?: string | null
           concepto: string
           created_at?: string
           empresa_id?: string
@@ -40,6 +173,8 @@ export type Database = {
           tipo: string
         }
         Update: {
+          caja_fondo_id?: string | null
+          caja_turno_id?: string | null
           concepto?: string
           created_at?: string
           empresa_id?: string
@@ -53,6 +188,20 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "caja_movimientos_caja_fondo_id_fkey"
+            columns: ["caja_fondo_id"]
+            isOneToOne: false
+            referencedRelation: "caja_fondos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_movimientos_caja_turno_id_fkey"
+            columns: ["caja_turno_id"]
+            isOneToOne: false
+            referencedRelation: "caja_turnos"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "caja_movimientos_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
@@ -64,6 +213,189 @@ export type Database = {
             columns: ["sucursal_id"]
             isOneToOne: false
             referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      caja_traspasos_fondos: {
+        Row: {
+          concepto: string
+          created_at: string
+          empresa_id: string
+          fondo_destino_id: string
+          fondo_origen_id: string
+          id: string
+          monto: number
+          sucursal_id: string | null
+          turno_id: string | null
+          usuario_id: string | null
+        }
+        Insert: {
+          concepto: string
+          created_at?: string
+          empresa_id: string
+          fondo_destino_id: string
+          fondo_origen_id: string
+          id?: string
+          monto: number
+          sucursal_id?: string | null
+          turno_id?: string | null
+          usuario_id?: string | null
+        }
+        Update: {
+          concepto?: string
+          created_at?: string
+          empresa_id?: string
+          fondo_destino_id?: string
+          fondo_origen_id?: string
+          id?: string
+          monto?: number
+          sucursal_id?: string | null
+          turno_id?: string | null
+          usuario_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caja_traspasos_fondos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_traspasos_fondos_fondo_destino_id_fkey"
+            columns: ["fondo_destino_id"]
+            isOneToOne: false
+            referencedRelation: "caja_fondos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_traspasos_fondos_fondo_origen_id_fkey"
+            columns: ["fondo_origen_id"]
+            isOneToOne: false
+            referencedRelation: "caja_fondos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_traspasos_fondos_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_traspasos_fondos_turno_id_fkey"
+            columns: ["turno_id"]
+            isOneToOne: false
+            referencedRelation: "caja_turnos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_traspasos_fondos_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      caja_turnos: {
+        Row: {
+          created_at: string
+          diferencia_f1: number | null
+          diferencia_f2: number | null
+          empresa_id: string
+          estado: string
+          fecha_apertura: string
+          fecha_cierre: string | null
+          id: string
+          justificacion_descuadre: string | null
+          monto_apertura_fondo1: number
+          monto_apertura_fondo2: number
+          monto_cierre_declarado_f1: number | null
+          monto_cierre_declarado_f2: number | null
+          monto_cierre_teorico_f1: number | null
+          monto_cierre_teorico_f2: number | null
+          monto_fondo_siguiente_f1: number | null
+          monto_remesa_retirada: number | null
+          snapshot_resumen: Json | null
+          sucursal_id: string | null
+          usuario_apertura_id: string | null
+          usuario_cierre_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          diferencia_f1?: number | null
+          diferencia_f2?: number | null
+          empresa_id: string
+          estado?: string
+          fecha_apertura?: string
+          fecha_cierre?: string | null
+          id?: string
+          justificacion_descuadre?: string | null
+          monto_apertura_fondo1?: number
+          monto_apertura_fondo2?: number
+          monto_cierre_declarado_f1?: number | null
+          monto_cierre_declarado_f2?: number | null
+          monto_cierre_teorico_f1?: number | null
+          monto_cierre_teorico_f2?: number | null
+          monto_fondo_siguiente_f1?: number | null
+          monto_remesa_retirada?: number | null
+          snapshot_resumen?: Json | null
+          sucursal_id?: string | null
+          usuario_apertura_id?: string | null
+          usuario_cierre_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          diferencia_f1?: number | null
+          diferencia_f2?: number | null
+          empresa_id?: string
+          estado?: string
+          fecha_apertura?: string
+          fecha_cierre?: string | null
+          id?: string
+          justificacion_descuadre?: string | null
+          monto_apertura_fondo1?: number
+          monto_apertura_fondo2?: number
+          monto_cierre_declarado_f1?: number | null
+          monto_cierre_declarado_f2?: number | null
+          monto_cierre_teorico_f1?: number | null
+          monto_cierre_teorico_f2?: number | null
+          monto_fondo_siguiente_f1?: number | null
+          monto_remesa_retirada?: number | null
+          snapshot_resumen?: Json | null
+          sucursal_id?: string | null
+          usuario_apertura_id?: string | null
+          usuario_cierre_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caja_turnos_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_turnos_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_turnos_usuario_apertura_id_fkey"
+            columns: ["usuario_apertura_id"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caja_turnos_usuario_cierre_id_fkey"
+            columns: ["usuario_cierre_id"]
+            isOneToOne: false
+            referencedRelation: "perfiles"
             referencedColumns: ["id"]
           },
         ]
@@ -329,7 +661,9 @@ export type Database = {
       }
       cotizaciones: {
         Row: {
+          caja_turno_id: string | null
           cliente_id: string
+          cuenta_bancaria_id: string | null
           empresa_id: string
           estatus: string
           fecha: string
@@ -342,7 +676,9 @@ export type Database = {
           vendedor_id: string | null
         }
         Insert: {
+          caja_turno_id?: string | null
           cliente_id: string
+          cuenta_bancaria_id?: string | null
           empresa_id?: string
           estatus?: string
           fecha?: string
@@ -355,7 +691,9 @@ export type Database = {
           vendedor_id?: string | null
         }
         Update: {
+          caja_turno_id?: string | null
           cliente_id?: string
+          cuenta_bancaria_id?: string | null
           empresa_id?: string
           estatus?: string
           fecha?: string
@@ -369,10 +707,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "cotizaciones_caja_turno_id_fkey"
+            columns: ["caja_turno_id"]
+            isOneToOne: false
+            referencedRelation: "caja_turnos"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cotizaciones_cliente_id_fkey"
             columns: ["cliente_id"]
             isOneToOne: false
             referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_cuenta_bancaria_id_fkey"
+            columns: ["cuenta_bancaria_id"]
+            isOneToOne: false
+            referencedRelation: "cuentas_bancarias"
             referencedColumns: ["id"]
           },
           {
@@ -401,6 +753,60 @@ export type Database = {
             columns: ["vendedor_id"]
             isOneToOne: false
             referencedRelation: "empleados"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cuentas_bancarias: {
+        Row: {
+          activo: boolean
+          alias: string
+          banco: string
+          clabe: string | null
+          created_at: string
+          empresa_id: string
+          id: string
+          numero_cuenta: string | null
+          sucursal_id: string | null
+          titular: string | null
+        }
+        Insert: {
+          activo?: boolean
+          alias: string
+          banco: string
+          clabe?: string | null
+          created_at?: string
+          empresa_id: string
+          id?: string
+          numero_cuenta?: string | null
+          sucursal_id?: string | null
+          titular?: string | null
+        }
+        Update: {
+          activo?: boolean
+          alias?: string
+          banco?: string
+          clabe?: string | null
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          numero_cuenta?: string | null
+          sucursal_id?: string | null
+          titular?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cuentas_bancarias_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cuentas_bancarias_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
             referencedColumns: ["id"]
           },
         ]
@@ -1141,8 +1547,11 @@ export type Database = {
       }
       pagos_orden: {
         Row: {
+          caja_fondo_id: string | null
+          caja_turno_id: string | null
           comision_pasarela: number | null
           cotizacion_id: string | null
+          cuenta_bancaria_id: string | null
           deleted_at: string | null
           empresa_id: string
           estatus: string
@@ -1158,8 +1567,11 @@ export type Database = {
           sucursal_id: string | null
         }
         Insert: {
+          caja_fondo_id?: string | null
+          caja_turno_id?: string | null
           comision_pasarela?: number | null
           cotizacion_id?: string | null
+          cuenta_bancaria_id?: string | null
           deleted_at?: string | null
           empresa_id?: string
           estatus?: string
@@ -1175,8 +1587,11 @@ export type Database = {
           sucursal_id?: string | null
         }
         Update: {
+          caja_fondo_id?: string | null
+          caja_turno_id?: string | null
           comision_pasarela?: number | null
           cotizacion_id?: string | null
+          cuenta_bancaria_id?: string | null
           deleted_at?: string | null
           empresa_id?: string
           estatus?: string
@@ -1193,10 +1608,31 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "pagos_orden_caja_fondo_id_fkey"
+            columns: ["caja_fondo_id"]
+            isOneToOne: false
+            referencedRelation: "caja_fondos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_orden_caja_turno_id_fkey"
+            columns: ["caja_turno_id"]
+            isOneToOne: false
+            referencedRelation: "caja_turnos"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "pagos_orden_cotizacion_id_fkey"
             columns: ["cotizacion_id"]
             isOneToOne: false
             referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagos_orden_cuenta_bancaria_id_fkey"
+            columns: ["cuenta_bancaria_id"]
+            isOneToOne: false
+            referencedRelation: "cuentas_bancarias"
             referencedColumns: ["id"]
           },
           {
@@ -1711,6 +2147,16 @@ export type Database = {
         Args: { p_nombre_empresa: string; p_nombre_usuario: string }
         Returns: undefined
       }
+      fn_abrir_turno_caja: {
+        Args: {
+          p_empresa_id: string
+          p_monto_fondo1: number
+          p_monto_fondo2: number
+          p_sucursal_id: string
+          p_usuario_id: string
+        }
+        Returns: Json
+      }
       fn_actualizar_orden_concurrente: {
         Args: {
           p_expected_version: number
@@ -1727,32 +2173,85 @@ export type Database = {
         }
         Returns: Json
       }
-      fn_descontar_stock_orden: { Args: { p_items: Json }; Returns: Json }
-      fn_registrar_movimiento_caja: {
+      fn_cerrar_turno_caja: {
         Args: {
-          p_concepto: string
-          p_idempotency_key?: string
-          p_metodo?: string
-          p_monto: number
-          p_responsable?: string
-          p_sucursal_id?: string
-          p_tipo: string
+          p_declarado_f1: number
+          p_declarado_f2: number
+          p_denominaciones_f1: Json
+          p_denominaciones_f2: Json
+          p_justificacion: string
+          p_monto_fondo_siguiente: number
+          p_monto_remesa: number
+          p_turno_id: string
+          p_usuario_cierre_id: string
         }
         Returns: Json
       }
+      fn_descontar_stock_orden: { Args: { p_items: Json }; Returns: Json }
+      fn_registrar_movimiento_caja:
+        | {
+            Args: {
+              p_concepto: string
+              p_idempotency_key?: string
+              p_metodo?: string
+              p_monto: number
+              p_responsable?: string
+              p_sucursal_id?: string
+              p_tipo: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_caja_fondo_id?: string
+              p_caja_turno_id?: string
+              p_concepto: string
+              p_idempotency_key?: string
+              p_metodo?: string
+              p_monto: number
+              p_responsable?: string
+              p_sucursal_id?: string
+              p_tipo: string
+            }
+            Returns: Json
+          }
       fn_registrar_pagos_orden_multi: {
         Args: { p_orden_id: string; p_pagos: Json; p_sucursal_id?: string }
         Returns: Json
       }
-      fn_registrar_venta_multi_pago: {
+      fn_registrar_venta_multi_pago:
+        | {
+            Args: {
+              p_cliente_id: string
+              p_items: Json
+              p_pagos: Json
+              p_servicios_adicionales?: Json
+              p_sucursal_id?: string
+              p_vehiculo_id: string
+              p_vendedor_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_cliente_id: string
+              p_items: Json
+              p_pagos: Json
+              p_servicios_adicionales?: Json
+              p_sucursal_id: string
+              p_vehiculo_id: string
+              p_vendedor_id: string
+            }
+            Returns: Json
+          }
+      fn_traspaso_entre_fondos: {
         Args: {
-          p_cliente_id: string
-          p_items: Json
-          p_pagos: Json
-          p_servicios_adicionales?: Json
-          p_sucursal_id?: string
-          p_vehiculo_id: string
-          p_vendedor_id: string
+          p_concepto: string
+          p_fondo_destino_id: string
+          p_fondo_origen_id: string
+          p_monto: number
+          p_turno_id: string
+          p_usuario_id: string
         }
         Returns: Json
       }

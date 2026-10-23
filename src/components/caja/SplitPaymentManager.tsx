@@ -20,6 +20,7 @@ interface SplitPaymentManagerProps {
   payments: PaymentSplitItem[];
   onChange: (payments: PaymentSplitItem[]) => void;
   disabled?: boolean;
+  cuentasBancarias?: Array<{ id: string; banco: string; alias: string }>;
 }
 
 const METODO_OPTIONS: Array<{
@@ -41,6 +42,7 @@ export function SplitPaymentManager({
   payments,
   onChange,
   disabled = false,
+  cuentasBancarias = [],
 }: SplitPaymentManagerProps) {
   // Sum of assigned amounts
   const totalCubierto = payments.reduce((acc, p) => acc + Number(p.monto || 0), 0);
@@ -261,16 +263,38 @@ export function SplitPaymentManager({
                 <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/60 text-xs">
                   <div>
                     <span className="text-[10px] text-slate-500 font-medium block">
-                      {isCard ? "Terminal / Banco" : isTransfer ? "Banco Emisor / SPEI" : "Plataforma"}
+                      {isCard ? "Terminal / Banco" : isTransfer ? "Cuenta Receptora SPEI" : "Plataforma"}
                     </span>
-                    <input
-                      type="text"
-                      disabled={disabled}
-                      placeholder={isCard ? "Ej. Clip, Santander Débito" : isTransfer ? "Ej. BBVA Transfer" : "Kueski"}
-                      value={p.detalle || ""}
-                      onChange={(e) => handleUpdatePayment(p.id, { detalle: e.target.value })}
-                      className="w-full h-8 mt-0.5 px-2 bg-white border border-slate-200 rounded text-xs text-slate-800 shadow-xs"
-                    />
+                    {isTransfer && cuentasBancarias && cuentasBancarias.length > 0 ? (
+                      <select
+                        disabled={disabled}
+                        value={p.cuentaBancariaId || cuentasBancarias[0]?.id || ""}
+                        onChange={(e) => {
+                          const selectedId = e.target.value;
+                          const cta = cuentasBancarias.find((c) => c.id === selectedId);
+                          handleUpdatePayment(p.id, {
+                            cuentaBancariaId: selectedId,
+                            detalle: cta ? cta.alias : "Transferencia SPEI",
+                          });
+                        }}
+                        className="w-full h-8 mt-0.5 px-2 bg-white border border-slate-200 rounded text-xs font-medium text-slate-800 shadow-xs focus:outline-hidden"
+                      >
+                        {cuentasBancarias.map((cta) => (
+                          <option key={cta.id} value={cta.id}>
+                            {cta.alias} ({cta.banco})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        disabled={disabled}
+                        placeholder={isCard ? "Ej. Clip, Santander Débito" : isTransfer ? "Ej. BBVA Fiscal" : "Kueski"}
+                        value={p.detalle || ""}
+                        onChange={(e) => handleUpdatePayment(p.id, { detalle: e.target.value })}
+                        className="w-full h-8 mt-0.5 px-2 bg-white border border-slate-200 rounded text-xs text-slate-800 shadow-xs"
+                      />
+                    )}
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 font-medium block">

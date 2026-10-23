@@ -17,6 +17,8 @@ export interface PaymentSplitItem {
   cambio?: number;
   referencia?: string;
   detalle?: string;
+  cuentaBancariaId?: string;
+  cajaFondoId?: string;
 }
 
 export interface RegistrarVentaMultiParams {
@@ -69,6 +71,8 @@ export const MultiPaymentService = {
         cambio: Number(p.cambio || 0),
         referencia: p.referencia?.trim() || null,
         detalle: p.detalle?.trim() || null,
+        cuenta_bancaria_id: p.cuentaBancariaId || null,
+        caja_fondo_id: p.cajaFondoId || null,
       }));
 
       const { data, error } = await supabase.rpc("fn_registrar_venta_multi_pago", {
@@ -120,6 +124,8 @@ export const MultiPaymentService = {
         cambio: Number(p.cambio || 0),
         referencia: p.referencia?.trim() || null,
         detalle: p.detalle?.trim() || null,
+        cuenta_bancaria_id: p.cuentaBancariaId || null,
+        caja_fondo_id: p.cajaFondoId || null,
       }));
 
       const { data, error } = await supabase.rpc("fn_registrar_pagos_orden_multi", {

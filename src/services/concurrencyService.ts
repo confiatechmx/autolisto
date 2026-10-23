@@ -146,6 +146,8 @@ export const ConcurrencyService = {
     responsable?: string;
     sucursalId?: string | null;
     idempotencyKey?: string;
+    cajaTurnoId?: string;
+    cajaFondoId?: string;
   }): Promise<CajaMovimientoResult> {
     try {
       const idempotencyKey =
@@ -160,6 +162,8 @@ export const ConcurrencyService = {
         p_responsable: params.responsable || "Caja General",
         p_sucursal_id: params.sucursalId || undefined,
         p_idempotency_key: idempotencyKey,
+        p_caja_turno_id: params.cajaTurnoId || undefined,
+        p_caja_fondo_id: params.cajaFondoId || undefined,
       });
 
       if (error) {
