@@ -391,6 +391,15 @@ export function Topbar() {
       <div className="flex items-center gap-2.5">
         {/* Caja / POS Direct Shortcut */}
         <Link
+          href="/tablero?nuevaOrden=1"
+          title="Crear Nueva Orden de Servicio"
+          style={{ backgroundColor: empresa?.color_primario || "#0284c7" }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white text-xs font-bold transition-all shadow-2xs hover:opacity-95 cursor-pointer"
+        >
+          <Plus size={14} />
+          <span>+ Nueva Orden</span>
+        </Link>
+        <Link
           href="/caja"
           title="Terminal de Cobro Rápido (POS)"
           className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer"

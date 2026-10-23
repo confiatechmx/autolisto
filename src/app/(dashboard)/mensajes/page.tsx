@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Search, Send, MessageSquare, Plus, User, MoreVertical, Phone, Loader2, Globe, Camera } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 
@@ -175,9 +176,9 @@ export default function MensajesInboxPage() {
       setOppFuente("Facebook");
       setOppNotas("");
       loadSessions(); // recargar para ver el cliente vinculado
-      alert("¡Oportunidad de Venta creada exitosamente y mandada al Pipeline!");
+      toast.success("¡Oportunidad de venta creada exitosamente y mandada al Pipeline!");
     } else {
-      alert("Error al crear la oportunidad");
+      toast.error("Error al crear la oportunidad");
     }
   };
 
@@ -185,8 +186,8 @@ export default function MensajesInboxPage() {
     <div className="h-full flex flex-col relative animate-in fade-in duration-300">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3 sm:gap-0">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">Inbox Omnicanal</h1>
-          <p className="text-sm font-light text-zinc-500 mt-1">Centraliza tus mensajes de WhatsApp y Redes Sociales.</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Inbox Omnicanal</h1>
+          <p className="text-sm font-light text-slate-500 mt-1">Centraliza tus mensajes de WhatsApp y Redes Sociales.</p>
         </div>
         <button 
           onClick={simulateIncomingLead}
@@ -197,42 +198,42 @@ export default function MensajesInboxPage() {
         </button>
       </div>
 
-      <div className="flex-1 bg-white border border-zinc-200 rounded-2xl shadow-sm flex overflow-hidden">
+      <div className="flex-1 bg-white border border-slate-200 rounded-2xl shadow-sm flex overflow-hidden">
         
         {/* Left Panel: Chat List */}
-        <div className={`w-full md:w-80 border-r border-zinc-200 flex-col bg-zinc-50/50 shrink-0 ${activeSession ? 'hidden md:flex' : 'flex'}`}>
-          <div className="p-4 border-b border-zinc-200">
+        <div className={`w-full md:w-80 border-r border-slate-200 flex-col bg-slate-50/50 shrink-0 ${activeSession ? 'hidden md:flex' : 'flex'}`}>
+          <div className="p-4 border-b border-slate-200">
             <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
                 type="text" 
                 placeholder="Buscar chats..." 
-                className="w-full pl-9 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
           </div>
           
           <div className="flex-1 overflow-y-auto">
             {loading ? (
-              <div className="p-8 text-center text-zinc-400"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Cargando...</div>
+              <div className="p-8 text-center text-slate-400"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Cargando...</div>
             ) : sessions.length > 0 ? (
               sessions.map(session => (
                 <div 
                   key={session.id}
                   onClick={() => setActiveSession(session)}
-                  className={`p-4 border-b border-zinc-100 cursor-pointer transition-colors flex flex-col gap-1 ${activeSession?.id === session.id ? 'bg-blue-50/60 border-l-4 border-l-blue-500' : 'hover:bg-white border-l-4 border-l-transparent'}`}
+                  className={`p-4 border-b border-slate-100 cursor-pointer transition-colors flex flex-col gap-1 ${activeSession?.id === session.id ? 'bg-blue-50/60 border-l-4 border-l-blue-500' : 'hover:bg-white border-l-4 border-l-transparent'}`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-zinc-900 truncate">
+                    <span className="font-bold text-sm text-slate-900 truncate">
                       {session.cliente?.nombre || 'Prospecto Web'}
                     </span>
-                    <span className="text-[10px] text-zinc-400 font-medium">
+                    <span className="text-[10px] text-slate-400 font-medium">
                       {new Date(session.creado_en).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     {getPlatformIcon(session.canal)}
-                    <span className="text-xs text-zinc-500 truncate">
+                    <span className="text-xs text-slate-500 truncate">
                       {session.cliente?.telefono || 'Nuevo mensaje'}
                     </span>
                   </div>
@@ -241,7 +242,7 @@ export default function MensajesInboxPage() {
             ) : (
               <div className="p-8 text-center flex flex-col items-center justify-center h-full">
                 <MessageSquare size={32} className="text-zinc-200 mb-3" />
-                <p className="text-xs text-zinc-400 font-medium">No hay mensajes recientes</p>
+                <p className="text-xs text-slate-400 font-medium">No hay mensajes recientes</p>
               </div>
             )}
           </div>
@@ -252,19 +253,19 @@ export default function MensajesInboxPage() {
           {activeSession ? (
             <>
               {/* Chat Header */}
-              <div className="h-16 bg-white border-b border-zinc-200 px-4 md:px-6 flex items-center justify-between shrink-0">
+              <div className="h-16 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2 md:gap-3">
-                  <button onClick={() => setActiveSession(null)} className="md:hidden p-2 -ml-2 text-zinc-500 hover:text-zinc-700">
+                  <button onClick={() => setActiveSession(null)} className="md:hidden p-2 -ml-2 text-slate-500 hover:text-zinc-700">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                   </button>
-                  <div className="w-10 h-10 rounded-full bg-zinc-100 border border-zinc-200 flex items-center justify-center text-zinc-500 shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
                     <User size={20} />
                   </div>
                   <div className="flex flex-col">
-                    <span className="font-bold text-zinc-900 text-sm">
+                    <span className="font-bold text-slate-900 text-sm">
                       {activeSession.cliente?.nombre || 'Prospecto (Sin Registrar)'}
                     </span>
-                    <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 font-medium">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
                       {getPlatformIcon(activeSession.canal)}
                       <span className="capitalize">{activeSession.canal.replace('_', ' ')}</span>
                     </div>
@@ -277,11 +278,11 @@ export default function MensajesInboxPage() {
                       setOppPhone(activeSession.cliente?.telefono || "");
                       setIsOppModalOpen(true);
                     }}
-                    className="px-3 py-1.5 text-xs font-bold text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg shadow-sm transition-colors cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm transition-colors cursor-pointer"
                   >
                     Crear Oportunidad
                   </button>
-                  <button className="p-2 text-zinc-400 hover:text-zinc-700 transition-colors">
+                  <button className="p-2 text-slate-400 hover:text-zinc-700 transition-colors">
                     <MoreVertical size={18} />
                   </button>
                 </div>
@@ -290,7 +291,7 @@ export default function MensajesInboxPage() {
               {/* Chat Messages */}
               <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-3">
                 <div className="text-center mb-6">
-                  <span className="bg-white/80 backdrop-blur border border-zinc-200 px-3 py-1 rounded-full text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                  <span className="bg-white/80 backdrop-blur border border-slate-200 px-3 py-1 rounded-full text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     Hoy
                   </span>
                 </div>
@@ -301,10 +302,10 @@ export default function MensajesInboxPage() {
                       <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm text-sm ${
                         isUser 
                           ? 'bg-blue-600 text-white rounded-br-sm' 
-                          : 'bg-white border border-zinc-200 text-zinc-800 rounded-bl-sm'
+                          : 'bg-white border border-slate-200 text-zinc-800 rounded-bl-sm'
                       }`}>
                         <p className="leading-relaxed">{msg.contenido}</p>
-                        <div className={`text-[9px] font-medium mt-1 text-right ${isUser ? 'text-blue-200' : 'text-zinc-400'}`}>
+                        <div className={`text-[9px] font-medium mt-1 text-right ${isUser ? 'text-blue-200' : 'text-slate-400'}`}>
                           {new Date(msg.creado_en).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </div>
                       </div>
@@ -315,8 +316,8 @@ export default function MensajesInboxPage() {
 
               {/* Chat Input */}
               <div className="p-4 bg-[#f0f2f5]">
-                <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-white p-2 rounded-xl border border-zinc-200 shadow-sm">
-                  <button type="button" className="p-2 text-zinc-400 hover:text-zinc-700 transition-colors">
+                <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+                  <button type="button" className="p-2 text-slate-400 hover:text-zinc-700 transition-colors">
                     <Plus size={20} />
                   </button>
                   <input 
@@ -337,12 +338,12 @@ export default function MensajesInboxPage() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center bg-zinc-50/50">
-              <div className="w-24 h-24 bg-white border border-zinc-200 rounded-full flex items-center justify-center shadow-sm mb-4">
+            <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/50">
+              <div className="w-24 h-24 bg-white border border-slate-200 rounded-full flex items-center justify-center shadow-sm mb-4">
                 <MessageSquare size={32} className="text-zinc-300" />
               </div>
-              <h2 className="text-lg font-bold text-zinc-900">Bandeja de Entrada</h2>
-              <p className="text-sm text-zinc-500 mt-2 max-w-sm text-center">Selecciona una conversación de la izquierda para comenzar a chatear o crear una oportunidad de venta.</p>
+              <h2 className="text-lg font-bold text-slate-900">Bandeja de Entrada</h2>
+              <p className="text-sm text-slate-500 mt-2 max-w-sm text-center">Selecciona una conversación de la izquierda para comenzar a chatear o crear una oportunidad de venta.</p>
             </div>
           )}
         </div>
@@ -353,8 +354,8 @@ export default function MensajesInboxPage() {
       {isOppModalOpen && activeSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold text-zinc-900 mb-1">Convertir en Oportunidad</h2>
-            <p className="text-sm text-zinc-500 mb-6">Manda este prospecto directo a tu Pipeline de Ventas.</p>
+            <h2 className="text-xl font-bold text-slate-900 mb-1">Convertir en Oportunidad</h2>
+            <p className="text-sm text-slate-500 mb-6">Manda este prospecto directo a tu Pipeline de Ventas.</p>
             
             <form onSubmit={handleCreateOpportunity} className="flex flex-col gap-4">
               
@@ -413,14 +414,14 @@ export default function MensajesInboxPage() {
                   type="number" 
                   value={oppAmount} 
                   onChange={e => setOppAmount(e.target.value)} 
-                  className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-500" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-zinc-500" 
                   placeholder="0.00" 
                   required
                 />
               </div>
               
-              <div className="flex gap-3 mt-4 pt-4 border-t border-zinc-100">
-                <button type="button" onClick={() => setIsOppModalOpen(false)} className="flex-1 px-4 py-2 text-sm font-bold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-colors">
+              <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100">
+                <button type="button" onClick={() => setIsOppModalOpen(false)} className="flex-1 px-4 py-2 text-sm font-bold text-zinc-600 bg-slate-100 hover:bg-zinc-200 rounded-xl transition-colors">
                   Cancelar
                 </button>
                 <button type="submit" className="flex-1 px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors">

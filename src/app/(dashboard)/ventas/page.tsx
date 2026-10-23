@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, GripVertical, Target, Phone, Calendar, CheckCircle2, XCircle } from "lucide-react";
-import { supabase } from "../../../lib/supabase";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, GripVertical, Target, Phone, Calendar, CheckCircle2, XCircle, ArrowRight, Building2, User, Car } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { useTenant } from "@/context/TenantContext";
+import { toast } from "sonner";
+import Link from "next/link";
 
 interface Oportunidad {
   id: string;
@@ -18,10 +21,13 @@ const COLUMNS = [
   { id: 'contactado', label: 'Contactado', color: 'border-purple-500 bg-purple-50/50 text-purple-700' },
   { id: 'cita_agendada', label: 'Cita Agendada', color: 'border-amber-500 bg-amber-50/50 text-amber-700' },
   { id: 'ganado', label: 'Ganado (En Taller)', color: 'border-emerald-500 bg-emerald-50/50 text-emerald-700' },
-  { id: 'perdido', label: 'Perdido', color: 'border-red-500 bg-red-50/50 text-red-700' }
+  { id: 'perdido', label: 'Perdido', color: 'border-rose-500 bg-rose-50/50 text-rose-700' }
 ];
 
 export default function VentasPipelinePage() {
+  const supabase = createClient();
+  const { empresa, sucursalActiva } = useTenant();
+
   const [opportunities, setOpportunities] = useState<Oportunidad[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +51,7 @@ export default function VentasPipelinePage() {
   const [vehicleColor, setVehicleColor] = useState("");
   const [vehicleKm, setVehicleKm] = useState("");
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
       .from('oportunidades_venta')
@@ -56,21 +62,18 @@ export default function VentasPipelinePage() {
       setOpportunities(data as Oportunidad[]);
     }
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const moveOpportunity = async (id: string, newStatus: string) => {
-    // Optimistic UI update
     setOpportunities(prev => prev.map(o => o.id === id ? { ...o, estado: newStatus } : o));
-    
-    // DB Update
     await supabase.from('oportunidades_venta').update({ estado: newStatus }).eq('id', id);
+    toast.info(`Oportunidad movida a: ${newStatus}`);
   };
 
-  // Basic drag and drop
   const handleDragStart = (e: React.DragEvent, id: string) => {
     e.dataTransfer.setData("id", id);
   };
@@ -95,8 +98,8 @@ export default function VentasPipelinePage() {
     e.preventDefault();
     if (!manualName.trim() || !manualPhone.trim()) return;
 
-    // Create client
     const { data: newClient, error: clientErr } = await supabase.from('clientes').insert({
+      empresa_id: empresa?.id || null,
       nombre: manualName,
       telefono: manualPhone,
       correo: '',
@@ -108,6 +111,8 @@ export default function VentasPipelinePage() {
 
     if (newClient) {
       await supabase.from('oportunidades_venta').insert({
+        empresa_id: empresa?.id || null,
+        sucursal_id: sucursalActiva?.id || null,
         cliente_id: newClient.id,
         monto_estimado: Number(manualAmount) || 0,
         estado: 'nuevo'
@@ -121,6 +126,7 @@ export default function VentasPipelinePage() {
       setManualEmpresa("");
       setManualFuente("Local");
       setManualNotas("");
+      toast.success("Prospecto agregado exitosamente al Pipeline.");
       loadData();
     }
   };
@@ -132,25 +138,28 @@ export default function VentasPipelinePage() {
     const opp = opportunities.find(o => o.id === wonOppId);
     if (!opp) return;
 
-    // 1. Crear vehiculo
+    // 1. Crear vehículo
     const { data: newVehicle } = await supabase.from('vehiculos').insert({
       cliente_id: opp.cliente_id,
       marca: vehicleMarca,
       modelo: vehicleModelo,
-      placas: vehiclePlacas,
+      placas: vehiclePlacas ? vehiclePlacas.toUpperCase() : null,
       vin: vehicleVin || null,
       color: vehicleColor || null,
-      kilometraje: vehicleKm || null,
+      kilometraje_actual: Number(vehicleKm) || null,
       anio: new Date().getFullYear()
     }).select().single();
 
     if (newVehicle) {
-      // 2. Crear orden de servicio
-      await supabase.from('ordenes_servicio').insert({
+      // 2. Crear orden de servicio en "Citas del Día" para que caiga directo en el Kanban
+      const { data: newOrder } = await supabase.from('ordenes_servicio').insert({
+        empresa_id: empresa?.id || null,
+        sucursal_id: sucursalActiva?.id || null,
         vehiculo_id: newVehicle.id,
-        estado: 'Recibido',
-        estatus_pago: 'Pendiente'
-      });
+        estado: 'Citas del Día',
+        estatus_pago: 'Pendiente',
+        problema_reportado: `Ingreso desde Pipeline Comercial (Estimado: $${opp.monto_estimado})`
+      }).select().single();
 
       // 3. Actualizar estado opp a ganado
       await moveOpportunity(wonOppId, 'ganado');
@@ -163,30 +172,66 @@ export default function VentasPipelinePage() {
       setVehicleVin("");
       setVehicleColor("");
       setVehicleKm("");
-      alert("¡Cliente convertido! Orden de Servicio creada en el TallerBoard.");
+      toast.success("¡Cliente convertido! Orden creada en el Workflow de Taller.");
     }
   };
 
+  const totalPipelineMonto = opportunities.reduce((acc, o) => acc + Number(o.monto_estimado || 0), 0);
+  const totalWonMonto = opportunities.filter(o => o.estado === 'ganado').reduce((acc, o) => acc + Number(o.monto_estimado || 0), 0);
+  const conversionRate = opportunities.length > 0 ? (opportunities.filter(o => o.estado === 'ganado').length / opportunities.length) * 100 : 0;
+
   return (
-    <div className="h-full flex flex-col relative animate-in fade-in duration-300">
-      
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3 sm:gap-0">
+    <div className="h-full flex flex-col relative space-y-4">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">Pipeline de Ventas</h1>
-          <p className="text-sm font-light text-zinc-500 mt-1">Convierte tus prospectos de redes sociales en órdenes de servicio.</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <Target className="w-6 h-6 text-sky-600" />
+              Pipeline de Ventas y Prospectos (CRM)
+            </h1>
+            <span className="bg-sky-100 text-sky-800 text-[11px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+              Leads Taller
+            </span>
+          </div>
+          <p className="text-xs md:text-sm text-slate-500 mt-1">
+            Convierte cotizaciones y llamadas en órdenes de trabajo en el tablero operativo.
+          </p>
         </div>
-        <button 
-          onClick={() => setIsManualModalOpen(true)}
-          className="bg-zinc-900 text-white hover:bg-zinc-800 px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-sm w-full sm:w-auto"
-        >
-          <Plus size={14} />
-          Nuevo Prospecto Manual
-        </button>
+
+        {/* Scorecard quick pills */}
+        <div className="flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-3 bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-2xs text-xs">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">En Cartera</span>
+              <span className="font-extrabold text-slate-900 tabular-nums">${totalPipelineMonto.toLocaleString("es-MX")}</span>
+            </div>
+            <div className="h-6 w-px bg-slate-200" />
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Ganado</span>
+              <span className="font-extrabold text-emerald-600 tabular-nums">${totalWonMonto.toLocaleString("es-MX")}</span>
+            </div>
+            <div className="h-6 w-px bg-slate-200" />
+            <div>
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Conversión</span>
+              <span className="font-extrabold text-slate-800">{conversionRate.toFixed(0)}%</span>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => setIsManualModalOpen(true)}
+            style={{ backgroundColor: empresa?.color_primario || "#0284c7" }}
+            className="text-white hover:opacity-95 px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer shrink-0"
+          >
+            <Plus size={14} />
+            <span>Nuevo Prospecto</span>
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-x-auto pb-4 no-scrollbar">
-        <div className="flex gap-4 h-full min-w-max">
-          
+      {/* Kanban Board Columns */}
+      <div className="flex-1 overflow-x-auto pb-4 dense-scrollbar">
+        <div className="flex gap-3.5 h-[calc(100vh-210px)] min-w-max">
           {COLUMNS.map((col) => {
             const columnOps = opportunities.filter(o => o.estado === col.id);
             const columnTotal = columnOps.reduce((acc, curr) => acc + Number(curr.monto_estimado), 0);
@@ -194,197 +239,250 @@ export default function VentasPipelinePage() {
             return (
               <div 
                 key={col.id} 
-                className="w-80 flex flex-col h-full"
+                className="w-72 sm:w-80 flex flex-col h-full bg-slate-100/70 border border-slate-200 rounded-xl overflow-hidden shadow-2xs"
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, col.id)}
               >
-                
                 {/* Column Header */}
-                <div className={`p-3 rounded-xl border-t-4 mb-3 ${col.color}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-bold text-sm">{col.label}</h3>
-                    <span className="bg-white/50 px-2 py-0.5 rounded text-[10px] font-bold">
+                <div className="p-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      {col.label}
+                    </span>
+                    <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 tabular-nums">
                       {columnOps.length}
                     </span>
                   </div>
-                  <div className="text-xs font-medium opacity-80">
-                    ${columnTotal.toLocaleString('es-MX', {minimumFractionDigits: 2})} est.
-                  </div>
+                  <span className="text-xs font-extrabold text-slate-700 tabular-nums">
+                    ${columnTotal.toLocaleString('es-MX')}
+                  </span>
                 </div>
 
-                {/* Column Cards Container */}
-                <div className="flex-1 bg-zinc-100/50 rounded-xl p-2 overflow-y-auto flex flex-col gap-2 border border-zinc-200/50">
-                  {columnOps.length === 0 && !loading && (
-                    <div className="p-4 text-center text-zinc-400 text-xs font-medium italic border-2 border-dashed border-zinc-200 rounded-lg">
-                      Soltar aquí
-                    </div>
-                  )}
-
-                  {columnOps.map(op => (
+                {/* Cards List */}
+                <div className="flex-1 p-2.5 overflow-y-auto space-y-2.5 dense-scrollbar">
+                  {columnOps.map((opp) => (
                     <div 
-                      key={op.id} 
-                      draggable 
-                      onDragStart={(e) => handleDragStart(e, op.id)}
-                      className="bg-white p-3 rounded-lg border border-zinc-200 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative"
+                      key={opp.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, opp.id)}
+                      className="p-3.5 bg-white border border-slate-200/90 rounded-lg shadow-2xs hover:shadow-sm hover:border-slate-300 transition-all cursor-grab active:cursor-grabbing group relative"
                     >
-                      <div className="absolute top-3 right-2 opacity-0 group-hover:opacity-100 text-zinc-300 transition-opacity">
-                        <GripVertical size={16} />
-                      </div>
-                      
-                      <div className="font-bold text-zinc-900 text-sm pr-6">
-                        {op.cliente?.nombre || 'Desconocido'}
-                      </div>
-                      
-                      <div className="mt-2 flex flex-col gap-1.5">
-                        <div className="flex items-center gap-1.5 text-xs text-zinc-600">
-                          <Phone size={12} className="text-zinc-400" />
-                          <span>{op.cliente?.telefono || 'Sin teléfono'}</span>
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <div className="font-bold text-xs text-slate-900 flex items-center gap-1.5 truncate">
+                          <User size={13} className="text-slate-400 shrink-0" />
+                          <span className="truncate">{opp.cliente?.nombre || 'Prospecto sin nombre'}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 w-fit px-1.5 py-0.5 rounded">
-                          <Target size={12} />
-                          <span>${Number(op.monto_estimado).toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
-                        </div>
+                        <GripVertical size={13} className="text-slate-300 group-hover:text-slate-600 shrink-0" />
                       </div>
 
-                      <div className="mt-3 pt-3 border-t border-zinc-100 flex items-center justify-between text-[10px] font-semibold text-zinc-400">
-                        <span>Creado: {new Date(op.creado_en).toLocaleDateString()}</span>
-                        {col.id === 'ganado' && <CheckCircle2 size={14} className="text-emerald-500" />}
-                        {col.id === 'perdido' && <XCircle size={14} className="text-red-500" />}
+                      {opp.cliente?.telefono && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-2 font-mono">
+                          <Phone size={11} className="text-slate-400 shrink-0" />
+                          <span>{opp.cliente.telefono}</span>
+                        </div>
+                      )}
+
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Monto Proyectado:</span>
+                        <span className="font-black text-slate-900 tabular-nums">
+                          ${Number(opp.monto_estimado || 0).toLocaleString('es-MX')}
+                        </span>
                       </div>
+
+                      {opp.estado !== 'ganado' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWonOppId(opp.id);
+                            setIsGanadoModalOpen(true);
+                          }}
+                          className="mt-2 w-full py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <CheckCircle2 size={12} /> Convertir a Orden Taller
+                        </button>
+                      )}
                     </div>
                   ))}
+
+                  {columnOps.length === 0 && (
+                    <div className="h-28 border border-dashed border-slate-200 rounded-lg flex items-center justify-center text-center p-3 text-xs text-slate-400">
+                      Arrastra prospectos a esta columna
+                    </div>
+                  )}
                 </div>
-
               </div>
-            )
+            );
           })}
-
         </div>
       </div>
 
-      {/* Modal Nuevo Prospecto Manual */}
+      {/* Modal: Nuevo Prospecto Manual */}
       {isManualModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold text-zinc-900 mb-1">Nuevo Prospecto Manual</h2>
-            <p className="text-sm text-zinc-500 mb-6">Ingresa al cliente que contactó por teléfono o ventanilla.</p>
-            
-            <form onSubmit={handleCreateManualOpp} className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Nombre</label>
-                  <input required type="text" value={manualName} onChange={e => setManualName(e.target.value)} className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-500" placeholder="Ej. Ana Pérez" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Teléfono</label>
-                  <input required type="tel" value={manualPhone} onChange={e => setManualPhone(e.target.value)} className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-500" placeholder="Ej. 5512345678" />
-                </div>
-              </div>
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <form 
+            onSubmit={handleCreateManualOpp}
+            className="bg-white rounded-xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Plus size={15} className="text-sky-600" />
+                Registrar Prospecto Manual
+              </h2>
+              <button 
+                type="button" 
+                onClick={() => setIsManualModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
 
-              <div className="mt-1">
-                <button 
-                  type="button" 
-                  onClick={() => setIsManualAdvancedOpen(!isManualAdvancedOpen)}
-                  className="text-xs font-bold text-zinc-600 hover:text-zinc-800 flex items-center gap-1"
-                >
-                  {isManualAdvancedOpen ? "- Ocultar Datos Avanzados" : "+ Mostrar Datos Avanzados (Opcional)"}
-                </button>
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nombre del Cliente *</label>
+              <input 
+                type="text" 
+                required
+                value={manualName}
+                onChange={e => setManualName(e.target.value)}
+                placeholder="Ej. Roberto Méndez"
+                className="w-full text-xs font-medium border border-slate-300 rounded-md p-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
 
-              {isManualAdvancedOpen && (
-                <div className="mt-1 pt-3 border-t border-zinc-200/50 grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Empresa</label>
-                    <input type="text" value={manualEmpresa} onChange={e => setManualEmpresa(e.target.value)} className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-500" placeholder="Ej. Bimbo" />
-                  </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Fuente</label>
-                    <select value={manualFuente} onChange={e => setManualFuente(e.target.value)} className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-500">
-                      <option value="Local">Local (Taller)</option>
-                      <option value="Telefono">Llamada</option>
-                      <option value="Facebook">Facebook</option>
-                      <option value="Referido">Referido</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Notas Internas</label>
-                    <input type="text" value={manualNotas} onChange={e => setManualNotas(e.target.value)} className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-500" placeholder="Ej. Cliente pide factura..." />
-                  </div>
-                </div>
-              )}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">WhatsApp / Teléfono *</label>
+              <input 
+                type="tel" 
+                required
+                value={manualPhone}
+                onChange={e => setManualPhone(e.target.value)}
+                placeholder="Ej. 81 2345 6789"
+                className="w-full text-xs font-medium border border-slate-300 rounded-md p-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
 
-              <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Monto Estimado de Venta ($)</label>
-                <input required type="number" value={manualAmount} onChange={e => setManualAmount(e.target.value)} className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-zinc-500" placeholder="0.00" />
-              </div>
-              
-              <div className="flex gap-3 mt-4 pt-4 border-t border-zinc-100">
-                <button type="button" onClick={() => setIsManualModalOpen(false)} className="flex-1 px-4 py-2 text-sm font-bold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit" className="flex-1 px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors">
-                  Añadir al Pipeline
-                </button>
-              </div>
-            </form>
-          </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Presupuesto Estimado ($)</label>
+              <input 
+                type="number" 
+                value={manualAmount}
+                onChange={e => setManualAmount(e.target.value)}
+                placeholder="Ej. 4500"
+                className="w-full text-xs font-bold border border-slate-300 rounded-md p-2 text-slate-900 tabular-nums focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsManualModalOpen(false)}
+                className="flex-1 py-2 rounded-md border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                style={{ backgroundColor: empresa?.color_primario || "#0284c7" }}
+                className="flex-1 py-2 rounded-md text-xs font-bold text-white shadow-2xs hover:opacity-95 cursor-pointer"
+              >
+                Guardar Prospecto
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
-      {/* Modal Confirmar Taller (Ganado) */}
+      {/* Modal: Convertir a Ganado / Crear Orden de Taller */}
       {isGanadoModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 border-t-4 border-t-emerald-500">
-            <h2 className="text-xl font-bold text-zinc-900 mb-1">¡Venta Ganada! 🚀</h2>
-            <p className="text-sm text-zinc-500 mb-6">Para transferirlo al TallerBoard, registra el auto que ingresó.</p>
-            
-            <form onSubmit={handleConfirmGanado} className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Marca</label>
-                  <input required type="text" value={vehicleMarca} onChange={e => setVehicleMarca(e.target.value)} className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500" placeholder="Ej. Nissan" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Modelo</label>
-                  <input required type="text" value={vehicleModelo} onChange={e => setVehicleModelo(e.target.value)} className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500" placeholder="Ej. Versa" />
-                </div>
-              </div>
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <form 
+            onSubmit={handleConfirmGanado}
+            className="bg-white rounded-xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 text-emerald-700">
+                <CheckCircle2 size={16} />
+                Convertir Prospecto a Orden de Servicio
+              </h2>
+              <button 
+                type="button" 
+                onClick={() => setIsGanadoModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-1">
-                  <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Placas</label>
-                  <input type="text" value={vehiclePlacas} onChange={e => setVehiclePlacas(e.target.value)} className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500" placeholder="Opcional" />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">VIN (Número de Serie)</label>
-                  <input type="text" value={vehicleVin} onChange={e => setVehicleVin(e.target.value)} className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500" placeholder="Opcional pero recomendado" />
-                </div>
+            <p className="text-xs text-slate-500">
+              Registra el vehículo del cliente para generar automáticamente su orden en el Tablero de Taller.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Marca *</label>
+                <input 
+                  type="text" 
+                  required
+                  value={vehicleMarca}
+                  onChange={e => setVehicleMarca(e.target.value)}
+                  placeholder="Ej. Nissan"
+                  className="w-full text-xs font-medium border border-slate-300 rounded-md p-2 text-slate-900"
+                />
               </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Color</label>
-                  <input type="text" value={vehicleColor} onChange={e => setVehicleColor(e.target.value)} className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500" placeholder="Ej. Rojo" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1 uppercase tracking-wider">Kilometraje</label>
-                  <input type="text" value={vehicleKm} onChange={e => setVehicleKm(e.target.value)} className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500" placeholder="Ej. 120,000" />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Modelo *</label>
+                <input 
+                  type="text" 
+                  required
+                  value={vehicleModelo}
+                  onChange={e => setVehicleModelo(e.target.value)}
+                  placeholder="Ej. Versa 2021"
+                  className="w-full text-xs font-medium border border-slate-300 rounded-md p-2 text-slate-900"
+                />
               </div>
-              
-              <div className="flex gap-3 mt-4 pt-4 border-t border-zinc-100">
-                <button type="button" onClick={() => setIsGanadoModalOpen(false)} className="flex-1 px-4 py-2 text-sm font-bold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit" className="flex-1 px-4 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-sm">
-                  Crear Orden en Taller
-                </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Placas</label>
+                <input 
+                  type="text" 
+                  value={vehiclePlacas}
+                  onChange={e => setVehiclePlacas(e.target.value)}
+                  placeholder="Ej. RTM-492-B"
+                  className="w-full text-xs font-mono font-bold uppercase border border-slate-300 rounded-md p-2 text-slate-900"
+                />
               </div>
-            </form>
-          </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Kilometraje</label>
+                <input 
+                  type="number" 
+                  value={vehicleKm}
+                  onChange={e => setVehicleKm(e.target.value)}
+                  placeholder="Ej. 65000"
+                  className="w-full text-xs font-bold border border-slate-300 rounded-md p-2 text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsGanadoModalOpen(false)}
+                className="flex-1 py-2 rounded-md border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2 rounded-md text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Car size={14} /> Crear Orden en Taller
+              </button>
+            </div>
+          </form>
         </div>
       )}
-
     </div>
   );
 }

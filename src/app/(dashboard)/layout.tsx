@@ -1,6 +1,5 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
-import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { TenantProvider } from "@/context/TenantContext";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -35,7 +34,6 @@ export default async function DashboardLayout({
           <main className="flex-1 overflow-y-auto bg-background p-4 md:p-6 pb-20 md:pb-6">
             {children}
           </main>
-          <MobileBottomNav />
         </div>
       </div>
     </TenantProvider>
