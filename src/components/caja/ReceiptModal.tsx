@@ -22,6 +22,7 @@ interface ReceiptModalProps {
   onClose: () => void;
   order: any;
   payment?: any;
+  payments?: any[];
   empresa: any;
   sucursal?: any;
   cashGiven?: number;
@@ -33,6 +34,7 @@ export function ReceiptModal({
   onClose,
   order,
   payment,
+  payments,
   empresa,
   sucursal,
   cashGiven,
@@ -206,21 +208,45 @@ export function ReceiptModal({
             <div className="flex justify-between font-bold">
               <span>Cobrado en este movimiento:</span>
               <span>
-                ${Number(payment?.monto_total || total).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                ${Number(
+                  payments && payments.length > 0
+                    ? payments.reduce((acc: number, p: any) => acc + Number(p.monto || p.monto_total || 0), 0)
+                    : payment?.monto_total || total
+                ).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
               </span>
             </div>
-            <div className="flex justify-between text-[10px] text-emerald-800">
-              <span>Método:</span>
-              <span className="font-bold">
-                {payment?.metodo_detalle || payment?.proveedor_pago || "Efectivo en Ventanilla"}
-              </span>
-            </div>
-            {payment?.referencia && (
-              <div className="flex justify-between text-[10px] text-emerald-700">
-                <span>Referencia / Folio:</span>
-                <span className="font-mono">{payment.referencia}</span>
+
+            {payments && payments.length > 0 ? (
+              <div className="flex flex-col gap-1 border-t border-emerald-200/60 pt-1 text-[10px]">
+                <span className="font-bold text-emerald-900">Formas de Pago Aplicadas:</span>
+                {payments.map((p: any, idx: number) => (
+                  <div key={idx} className="flex justify-between text-emerald-800">
+                    <span>
+                      • {p.metodo || p.proveedor_pago} {p.detalle || p.metodo_detalle ? `(${p.detalle || p.metodo_detalle})` : ""} {p.referencia ? `[${p.referencia}]` : ""}:
+                    </span>
+                    <span className="font-bold">
+                      ${Number(p.monto || p.monto_total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
               </div>
+            ) : (
+              <>
+                <div className="flex justify-between text-[10px] text-emerald-800">
+                  <span>Método:</span>
+                  <span className="font-bold">
+                    {payment?.metodo_detalle || payment?.proveedor_pago || "Efectivo en Ventanilla"}
+                  </span>
+                </div>
+                {payment?.referencia && (
+                  <div className="flex justify-between text-[10px] text-emerald-700">
+                    <span>Referencia / Folio:</span>
+                    <span className="font-mono">{payment.referencia}</span>
+                  </div>
+                )}
+              </>
             )}
+
             {cashGiven != null && cashGiven > 0 && (
               <>
                 <div className="flex justify-between text-[10px] text-slate-700 pt-1 border-t border-emerald-200">

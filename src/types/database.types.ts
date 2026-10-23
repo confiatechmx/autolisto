@@ -334,7 +334,9 @@ export type Database = {
           estatus: string
           fecha: string
           id: string
+          metodos_pago: Json | null
           recordatorio_enviado: boolean
+          sucursal_id: string | null
           total: number
           vehiculo_id: string
           vendedor_id: string | null
@@ -345,7 +347,9 @@ export type Database = {
           estatus?: string
           fecha?: string
           id?: string
+          metodos_pago?: Json | null
           recordatorio_enviado?: boolean
+          sucursal_id?: string | null
           total?: number
           vehiculo_id: string
           vendedor_id?: string | null
@@ -356,7 +360,9 @@ export type Database = {
           estatus?: string
           fecha?: string
           id?: string
+          metodos_pago?: Json | null
           recordatorio_enviado?: boolean
+          sucursal_id?: string | null
           total?: number
           vehiculo_id?: string
           vendedor_id?: string | null
@@ -374,6 +380,13 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cotizaciones_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
             referencedColumns: ["id"]
           },
           {
@@ -1129,6 +1142,7 @@ export type Database = {
       pagos_orden: {
         Row: {
           comision_pasarela: number | null
+          cotizacion_id: string | null
           deleted_at: string | null
           empresa_id: string
           estatus: string
@@ -1138,13 +1152,14 @@ export type Database = {
           metodo_detalle: string | null
           monto_total: number
           motivo_cancelacion: string | null
-          orden_servicio_id: string
+          orden_servicio_id: string | null
           proveedor_pago: string
           referencia: string | null
           sucursal_id: string | null
         }
         Insert: {
           comision_pasarela?: number | null
+          cotizacion_id?: string | null
           deleted_at?: string | null
           empresa_id?: string
           estatus?: string
@@ -1154,13 +1169,14 @@ export type Database = {
           metodo_detalle?: string | null
           monto_total: number
           motivo_cancelacion?: string | null
-          orden_servicio_id: string
+          orden_servicio_id?: string | null
           proveedor_pago: string
           referencia?: string | null
           sucursal_id?: string | null
         }
         Update: {
           comision_pasarela?: number | null
+          cotizacion_id?: string | null
           deleted_at?: string | null
           empresa_id?: string
           estatus?: string
@@ -1170,12 +1186,19 @@ export type Database = {
           metodo_detalle?: string | null
           monto_total?: number
           motivo_cancelacion?: string | null
-          orden_servicio_id?: string
+          orden_servicio_id?: string | null
           proveedor_pago?: string
           referencia?: string | null
           sucursal_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "pagos_orden_cotizacion_id_fkey"
+            columns: ["cotizacion_id"]
+            isOneToOne: false
+            referencedRelation: "cotizaciones"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pagos_orden_empresa_id_fkey"
             columns: ["empresa_id"]
@@ -1714,6 +1737,22 @@ export type Database = {
           p_responsable?: string
           p_sucursal_id?: string
           p_tipo: string
+        }
+        Returns: Json
+      }
+      fn_registrar_pagos_orden_multi: {
+        Args: { p_orden_id: string; p_pagos: Json; p_sucursal_id?: string }
+        Returns: Json
+      }
+      fn_registrar_venta_multi_pago: {
+        Args: {
+          p_cliente_id: string
+          p_items: Json
+          p_pagos: Json
+          p_servicios_adicionales?: Json
+          p_sucursal_id?: string
+          p_vehiculo_id: string
+          p_vendedor_id: string
         }
         Returns: Json
       }

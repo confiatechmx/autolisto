@@ -7,6 +7,8 @@ import { ConcurrencyService } from "@/services/concurrencyService";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { ReceiptModal } from "@/components/caja/ReceiptModal";
+import { SplitPaymentManager } from "@/components/caja/SplitPaymentManager";
+import { MultiPaymentService, PaymentSplitItem } from "@/services/multiPaymentService";
 import { simularCuotasBNPL, CuotaSimulation } from "@/app/actions/payments";
 import {
   Loader2,
@@ -37,6 +39,7 @@ import {
   ChevronRight,
   ExternalLink,
   Coins,
+  Split,
 } from "lucide-react";
 
 type TabType = "POS" | "Cobranza" | "CajaChica" | "Comisiones";
@@ -64,8 +67,12 @@ export default function CajaPage() {
 
   // Active Payment Form in POS
   const [selectedMethod, setSelectedMethod] = useState<
-    "Efectivo" | "TPV" | "SPEI" | "KueskiPay" | "Atrato" | "Stripe"
+    "Efectivo" | "TPV" | "SPEI" | "KueskiPay" | "Atrato" | "Stripe" | "Split"
   >("Efectivo");
+  const [splitPayments, setSplitPayments] = useState<PaymentSplitItem[]>([
+    { id: "caja-split-1", metodo: "Efectivo", monto: 0, montoRecibido: 0, cambio: 0 }
+  ]);
+  const [receiptPayments, setReceiptPayments] = useState<any[] | undefined>(undefined);
 
   const [paymentAmount, setPaymentAmount] = useState<string>("");
   const [cashGiven, setCashGiven] = useState<string>("");
@@ -440,6 +447,55 @@ export default function CajaPage() {
 
     setIsProcessingPayment(true);
     try {
+      if (selectedMethod === "Split") {
+        const totalCubierto = splitPayments.reduce((acc, p) => acc + Number(p.monto || 0), 0);
+        if (totalCubierto < amountNum - 0.05) {
+          alert(`El total asignado en métodos (${totalCubierto.toFixed(2)}) no cubre el monto a cobrar (${amountNum.toFixed(2)})`);
+          setIsProcessingPayment(false);
+          return;
+        }
+
+        const targetSucursalId =
+          activeOrder.sucursal_id ||
+          sucursalActiva?.id ||
+          sucursales[0]?.id ||
+          "b0000000-0000-0000-0000-000000000001";
+
+        const res = await MultiPaymentService.registrarPagosOrdenMulti({
+          ordenId: activeOrder.id,
+          sucursalId: targetSucursalId,
+          pagos: splitPayments,
+        });
+
+        if (!res.success) {
+          alert(res.message || "Error al registrar pagos divididos");
+          setIsProcessingPayment(false);
+          return;
+        }
+
+        const totalCashChange = splitPayments
+          .filter((p) => p.metodo === "Efectivo")
+          .reduce((acc, p) => acc + Number(p.cambio || 0), 0);
+        const totalCashGiven = splitPayments
+          .filter((p) => p.metodo === "Efectivo")
+          .reduce((acc, p) => acc + Number(p.montoRecibido || p.monto || 0), 0);
+
+        const nuevoPagado = (activeOrder.pagado || 0) + totalCubierto;
+
+        setReceiptOrder({
+          ...activeOrder,
+          pagado: nuevoPagado,
+          saldo: Math.max(0, activeOrder.granTotal - nuevoPagado),
+        });
+        setReceiptPayments([...splitPayments]);
+        setReceiptPayment(null);
+        setReceiptCashGiven(totalCashGiven > 0 ? totalCashGiven : undefined);
+        setReceiptChangeDue(totalCashChange > 0 ? totalCashChange : undefined);
+        setReceiptModalOpen(true);
+
+        await loadData();
+        return;
+      }
       let dbProvider: "Efectivo" | "Transferencia" | "Mercado Pago" | "Stripe" | "KueskiPay" | "Atrato" = "Efectivo";
       let detalle = "Efectivo en Ventanilla";
       let ref = `AUT-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -513,6 +569,7 @@ export default function CajaPage() {
         saldo: Math.max(0, activeOrder.granTotal - nuevoPagado),
       });
       setReceiptPayment(newPago);
+      setReceiptPayments(undefined);
       setReceiptCashGiven(selectedMethod === "Efectivo" ? cashGivenNum : undefined);
       setReceiptChangeDue(selectedMethod === "Efectivo" ? changeDue : undefined);
       setReceiptModalOpen(true);
@@ -1145,10 +1202,54 @@ export default function CajaPage() {
                         <span className="font-bold text-xs text-slate-900 mt-1">Stripe Checkout</span>
                         <span className="text-[10px] text-slate-500">Pago en línea con tarjeta</span>
                       </button>
+
+                      {/* 7. Multi-Método Split Payment */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedMethod("Split");
+                          const amt = parseFloat(paymentAmount) || activeOrder.saldo;
+                          setSplitPayments([
+                            {
+                              id: `caja-split-${Date.now()}`,
+                              metodo: "Efectivo",
+                              monto: Number(amt.toFixed(2)),
+                              montoRecibido: Number(amt.toFixed(2)),
+                              cambio: 0,
+                            }
+                          ]);
+                        }}
+                        className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                          selectedMethod === "Split"
+                            ? "border-amber-600 bg-amber-50/50 ring-2 ring-amber-600/20"
+                            : "border-slate-200 hover:border-slate-300 bg-white"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <Split size={18} className="text-amber-600" />
+                          <span className="text-[10px] font-bold uppercase text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                            Multi-Método
+                          </span>
+                        </div>
+                        <span className="font-bold text-xs text-slate-900 mt-1">Pago Dividido</span>
+                        <span className="text-[10px] text-slate-500">Efectivo + Tarjeta + SPEI</span>
+                      </button>
                     </div>
 
                     {/* METHOD DETAILS CONTAINER */}
                     <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-4 mt-2">
+                      {/* 0. MULTI-METODO SPLIT PAYMENT */}
+                      {selectedMethod === "Split" && (
+                        <div className="flex flex-col gap-3">
+                          <SplitPaymentManager
+                            total={amountToPay}
+                            payments={splitPayments}
+                            onChange={setSplitPayments}
+                            disabled={isProcessingPayment}
+                          />
+                        </div>
+                      )}
+
                       {/* 1. EFECTIVO EN VENTANILLA */}
                       {selectedMethod === "Efectivo" && (
                         <div className="flex flex-col gap-3">
@@ -1798,6 +1899,7 @@ export default function CajaPage() {
         onClose={() => setReceiptModalOpen(false)}
         order={receiptOrder}
         payment={receiptPayment}
+        payments={receiptPayments}
         empresa={empresa}
         sucursal={sucursalActiva || sucursales[0]}
         cashGiven={receiptCashGiven}

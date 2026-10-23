@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConcurrencyService } from '@/services/concurrencyService';
+import { SplitPaymentManager } from './caja/SplitPaymentManager';
+import { MultiPaymentService, PaymentSplitItem } from '@/services/multiPaymentService';
 import ModalAltaExpress from './ModalAltaExpress';
 import ModalAltaVehiculo from './ModalAltaVehiculo';
 import { createPortal } from 'react-dom';
@@ -176,6 +178,9 @@ export default function QuoteBuilder({
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Tarjeta' | 'Transferencia'>('Efectivo');
   const [amountReceived, setAmountReceived] = useState<string>('');
+  const [paymentSplits, setPaymentSplits] = useState<PaymentSplitItem[]>([
+    { id: 'init-split', metodo: 'Efectivo', monto: 0, montoRecibido: 0, cambio: 0 }
+  ]);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [lastSaleInfo, setLastSaleInfo] = useState<{
@@ -195,6 +200,7 @@ export default function QuoteBuilder({
       nombre: string;
       precio: number;
     }[];
+    metodosPago?: PaymentSplitItem[];
   } | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -505,88 +511,77 @@ export default function QuoteBuilder({
       return;
     }
 
-    const calculatedChange = paymentMethod === 'Efectivo'
-      ? Math.max(0, (parseFloat(amountReceived) || 0) - grandTotal)
-      : 0;
+    const totalCubierto = paymentSplits.reduce((acc, p) => acc + Number(p.monto || 0), 0);
+    if (totalCubierto < (grandTotal - 0.05)) {
+      toast.error(`El total asignado (${totalCubierto.toFixed(2)}) no cubre el total de la venta (${grandTotal.toFixed(2)})`);
+      return;
+    }
 
     setIsProcessingPayment(true);
 
     try {
-      const cleanVendedorId = vendedorId === 'admin-demo-id' || !vendedorId
-        ? 'b001bc99-9c0b-4ef8-bb6d-6bb9bd380e51' // Sofía
-        : vendedorId;
-
-      // 1. Guardar la cotización en Supabase con estatus 'Pagada'
-      const { data: quote, error: qErr } = await supabase
-        .from('cotizaciones')
-        .insert({
-          cliente_id: selectedClientId,
-          vehiculo_id: selectedVehicleId,
-          total: grandTotal,
-          estatus: 'Pagada',
-          vendedor_id: cleanVendedorId
-        })
-        .select()
-        .single();
-
-      if (qErr) throw qErr;
-
-      // 2. Guardar los detalles de la cotización
-      const details = selectedItems.map(item => ({
-        cotizacion_id: quote.id,
+      const items = selectedItems.map((item) => ({
         llanta_id: item.tire.id,
         cantidad: item.cantidad,
         precio_unitario: item.precioUnitario,
-        subtotal: item.precioUnitario * item.cantidad
+        subtotal: item.precioUnitario * item.cantidad,
       }));
 
-      const { error: dErr } = await supabase
-        .from('detalles_cotizacion')
-        .insert(details);
+      const serviciosAdicionales = availableServices
+        .filter((s) => selectedServiceIds.has(s.id))
+        .map((s) => ({
+          nombre: s.nombre,
+          precio: s.aplica_promo_llantas && qualifiesForFreeAlignment ? 0 : Number(s.precio),
+        }));
 
-      if (dErr) throw dErr;
+      // Registrar atómicamente con pagos multi-método y deducción de stock
+      const res = await MultiPaymentService.registrarVentaMultiPago({
+        clienteId: selectedClientId,
+        vehiculoId: selectedVehicleId,
+        vendedorId,
+        items,
+        pagos: paymentSplits,
+        serviciosAdicionales,
+      });
 
-      // 3. Decrementar existencias atómicamente con bloqueo pesimista (SELECT ... FOR UPDATE)
-      const stockItems = selectedItems.map(item => ({
-        llanta_id: item.tire.id,
-        cantidad: item.cantidad,
-      }));
-
-      const stockRes = await ConcurrencyService.descontarStockLote(stockItems);
-      if (!stockRes.success) {
-        throw new Error(stockRes.message || 'Existencia insuficiente en inventario para procesar la venta');
+      if (!res.success) {
+        throw new Error(res.message || 'Error al procesar cobro multi-método');
       }
 
-      // 4. Guardar información para el ticket impreso y visual
-      const folioShort = quote.id.substring(0, 8).toUpperCase();
+      const folioShort = (res.cotizacion_id || 'VENTA').substring(0, 8).toUpperCase();
+      const totalCashChange = paymentSplits
+        .filter((p) => p.metodo === 'Efectivo')
+        .reduce((acc, p) => acc + Number(p.cambio || 0), 0);
+      const totalCashGiven = paymentSplits
+        .filter((p) => p.metodo === 'Efectivo')
+        .reduce((acc, p) => acc + Number(p.montoRecibido || p.monto || 0), 0);
+
+      const resumenMetodos = paymentSplits.length === 1
+        ? paymentSplits[0].metodo
+        : paymentSplits.map((p) => `${p.metodo} (${p.monto.toLocaleString('es-MX')})`).join(' + ');
+
       setLastSaleInfo({
         folio: `COVA-${folioShort}`,
         fecha: new Date().toLocaleString('es-MX'),
         total: grandTotal,
-        metodoPago: paymentMethod,
-        montoRecibido: paymentMethod === 'Efectivo' ? (parseFloat(amountReceived) || 0) : grandTotal,
-        cambio: calculatedChange,
+        metodoPago: resumenMetodos,
+        montoRecibido: totalCashGiven,
+        cambio: totalCashChange,
+        metodosPago: [...paymentSplits],
         cliente: currentClient?.nombre || '',
         telefono: currentClient?.telefono || '',
         placas: currentVehicle?.placas || '',
         marca: currentVehicle?.marca || '',
         modelo: currentVehicle?.modelo || '',
         items: [...selectedItems],
-        serviciosGenericos: availableServices
-          .filter(s => selectedServiceIds.has(s.id))
-          .map(s => ({
-            nombre: s.nombre,
-            precio: (s.aplica_promo_llantas && qualifiesForFreeAlignment) ? 0 : Number(s.precio)
-          }))
+        serviciosGenericos: serviciosAdicionales,
       });
 
-      toast.success('¡Cobro registrado exitosamente!');
-      addLog(`Venta registrada y pagada por $${grandTotal.toFixed(2)} (Folio: COVA-${folioShort})`, 'success');
+      toast.success('¡Cobro registrado exitosamente con múltiples métodos!');
+      addLog(`Venta registrada por ${grandTotal.toFixed(2)} [COVA-${folioShort}] con ${paymentSplits.length} método(s)`, 'success');
 
-      // Limpiar estados de servicios y el carrito
       setSelectedServiceIds(new Set());
       onClearQuote();
-      
       setIsCheckoutOpen(false);
       setCheckoutSuccess(true);
     } catch (err: any) {
@@ -658,7 +653,23 @@ export default function QuoteBuilder({
                   <span>TOTAL:</span>
                   <span>${lastSaleInfo.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
                 </div>
-                {lastSaleInfo.metodoPago === 'Efectivo' && (
+                {lastSaleInfo.metodosPago && lastSaleInfo.metodosPago.length > 0 ? (
+                  <div className="w-full flex flex-col gap-0.5 text-neutral-500 font-normal text-[8px] border-t border-hairline pt-1 mt-1 font-mono">
+                    <span className="font-bold text-neutral-700">Formas de Pago:</span>
+                    {lastSaleInfo.metodosPago.map((p, idx) => (
+                      <div key={idx} className="flex justify-between">
+                        <span>• {p.metodo} {p.detalle ? `(${p.detalle})` : ''}:</span>
+                        <span className="font-semibold">${Number(p.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ))}
+                    {lastSaleInfo.cambio > 0 && (
+                      <div className="flex justify-between text-emerald-600 font-bold">
+                        <span>CAMBIO:</span>
+                        <span>${lastSaleInfo.cambio.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : lastSaleInfo.metodoPago === 'Efectivo' ? (
                   <>
                     <div className="w-24 flex justify-between text-neutral-400 font-normal text-[8px]">
                       <span>EFECTIVO:</span>
@@ -669,7 +680,7 @@ export default function QuoteBuilder({
                       <span>${lastSaleInfo.cambio.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
                     </div>
                   </>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
@@ -763,13 +774,22 @@ export default function QuoteBuilder({
                 </div>
               </div>
 
-              <div style={{ paddingBottom: '8px', marginBottom: '8px', marginTop: '8px' }}>
-                <p style={{ margin: '2px 0' }}><strong>MÉTODO DE PAGO:</strong> {lastSaleInfo.metodoPago}</p>
-                {lastSaleInfo.metodoPago === 'Efectivo' && (
-                  <>
-                    <p style={{ margin: '2px 0' }}><strong>RECIBIDO:</strong> ${lastSaleInfo.montoRecibido.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
-                    <p style={{ margin: '2px 0', fontWeight: 'bold' }}><strong>CAMBIO:</strong> ${lastSaleInfo.cambio.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
-                  </>
+              <div style={{ paddingBottom: '8px', marginBottom: '8px', marginTop: '8px', borderTop: '1px dashed #111111', paddingTop: '6px' }}>
+                <p style={{ margin: '2px 0', fontWeight: 'bold' }}>FORMAS DE PAGO:</p>
+                {lastSaleInfo.metodosPago && lastSaleInfo.metodosPago.length > 0 ? (
+                  lastSaleInfo.metodosPago.map((p, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', margin: '2px 0' }}>
+                      <span>• {p.metodo} {p.detalle ? `(${p.detalle})` : ''} {p.referencia ? `[${p.referencia}]` : ''}</span>
+                      <span style={{ fontWeight: 'bold' }}>${Number(p.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ margin: '2px 0' }}>{lastSaleInfo.metodoPago}</p>
+                )}
+                {lastSaleInfo.cambio > 0 && (
+                  <p style={{ margin: '4px 0 2px 0', fontWeight: 'bold' }}>
+                    CAMBIO DEVUELTO: ${lastSaleInfo.cambio.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                  </p>
                 )}
               </div>
 
@@ -1090,8 +1110,15 @@ export default function QuoteBuilder({
       <button
         onClick={() => {
           if (selectedItems.length === 0) return;
-          setPaymentMethod('Efectivo');
-          setAmountReceived('');
+          setPaymentSplits([
+            {
+              id: `split-${Date.now()}`,
+              metodo: 'Efectivo',
+              monto: Number(grandTotal.toFixed(2)),
+              montoRecibido: Number(grandTotal.toFixed(2)),
+              cambio: 0,
+            }
+          ]);
           setIsCheckoutOpen(true);
         }}
         disabled={selectedItems.length === 0}
@@ -1267,10 +1294,10 @@ export default function QuoteBuilder({
         </div>
       )}
 
-      {/* Checkout POS Modal */}
+      {/* Checkout POS Modal con Multi-Métodos de Pago */}
       {isCheckoutOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card p-6 rounded-xl shadow-md border border-slate-200 w-full max-w-sm relative animate-in fade-in zoom-in-95 duration-200 flex flex-col gap-5">
+          <div className="bg-card p-6 rounded-xl shadow-xl border border-slate-200 w-full max-w-lg relative animate-in fade-in zoom-in-95 duration-200 flex flex-col gap-4">
             {/* Header */}
             <button 
               onClick={() => setIsCheckoutOpen(false)}
@@ -1279,104 +1306,55 @@ export default function QuoteBuilder({
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
 
-            <div className="flex items-center gap-2 border-b border-slate-200 pb-4">
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
               <Landmark className="w-5 h-5 text-slate-900" />
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                Caja y Transacción
-              </h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                  Caja Mostrador • Cobro de Venta
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  {currentClient?.nombre || 'Venta General'} • {currentVehicle ? `${currentVehicle.marca} ${currentVehicle.modelo}` : 'Sin vehículo'}
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-5">
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 text-center flex flex-col items-center justify-center">
-                <span className="text-xs text-slate-500 uppercase font-semibold tracking-wider">Total a Cobrar</span>
-                <div className="text-3xl font-bold text-slate-900 tabular-nums tracking-tight mt-1">
-                  ${grandTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Método de Pago
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => {
-                    const val = e.target.value as 'Efectivo' | 'Tarjeta' | 'Transferencia';
-                    setPaymentMethod(val);
-                    if (val !== 'Efectivo') {
-                      setAmountReceived(grandTotal.toString());
-                    } else {
-                      setAmountReceived('');
-                    }
-                  }}
-                  className="w-full h-10 bg-white border border-slate-300 rounded-md px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer font-medium shadow-sm"
-                >
-                  <option value="Efectivo">Efectivo</option>
-                  <option value="Tarjeta">Tarjeta de Débito/Crédito</option>
-                  <option value="Transferencia">Transferencia Bancaria</option>
-                </select>
-              </div>
-
-              {paymentMethod === 'Efectivo' ? (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Monto Recibido
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min={0}
-                    step="0.01"
-                    placeholder="0.00"
-                    value={amountReceived}
-                    onChange={(e) => setAmountReceived(e.target.value)}
-                    className="w-full h-12 bg-white border border-slate-300 rounded-md px-3 text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-medium tabular-nums shadow-sm"
-                  />
-                </div>
-              ) : (
-                <div className="bg-slate-50 border border-slate-200 rounded-md p-3 flex justify-between items-center text-sm shadow-inner">
-                  <span className="text-slate-500 font-medium">Monto Cargado:</span>
-                  <span className="font-bold tabular-nums text-slate-900">${grandTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
-                </div>
-              )}
-
-              {paymentMethod === 'Efectivo' && (
-                <div className="border border-dashed border-slate-300 rounded-md p-3 bg-slate-50 flex justify-between items-center">
-                  <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Cambio a Entregar:</span>
-                  <span className={`text-lg font-bold tabular-nums ${
-                    parseFloat(amountReceived) >= grandTotal ? 'text-slate-900' : 'text-destructive'
-                  }`}>
-                    {amountReceived && parseFloat(amountReceived) >= grandTotal
-                      ? `$${(parseFloat(amountReceived) - grandTotal).toLocaleString('es-MX', { minimumFractionDigits: 2 })}`
-                      : amountReceived
-                        ? 'Monto insuficiente'
-                        : '$0.00'
-                    }
-                  </span>
-                </div>
-              )}
+            {/* Total to Collect Card */}
+            <div className="bg-slate-900 text-white rounded-lg p-3.5 flex justify-between items-center shadow-inner">
+              <span className="text-xs uppercase font-semibold text-slate-300">Total Venta POS:</span>
+              <span className="text-2xl font-bold font-mono tracking-tight text-white">
+                ${grandTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+              </span>
             </div>
 
-            <div className="flex items-center gap-3 pt-4 border-t border-slate-200 mt-2">
+            {/* Reusable Split Payment Manager */}
+            <SplitPaymentManager
+              total={grandTotal}
+              payments={paymentSplits}
+              onChange={setPaymentSplits}
+              disabled={isProcessingPayment}
+            />
+
+            {/* Modal Actions */}
+            <div className="flex items-center gap-3 pt-3 border-t border-slate-200 mt-1">
               <button
                 type="button"
                 onClick={() => setIsCheckoutOpen(false)}
-                className="flex-1 h-12 text-sm font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer transition-colors"
+                className="flex-1 h-11 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleConfirmPayment}
-                disabled={isProcessingPayment || (paymentMethod === 'Efectivo' && (!amountReceived || parseFloat(amountReceived) < grandTotal))}
-                className="flex-[2] h-12 bg-success hover:bg-success/90 text-white rounded-lg text-lg font-medium shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isProcessingPayment || (paymentSplits.reduce((acc, p) => acc + Number(p.monto || 0), 0) < (grandTotal - 0.05))}
+                className="flex-[2] h-11 bg-success hover:bg-success/90 text-white rounded-lg text-sm font-bold shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isProcessingPayment ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Check className="w-5 h-5" />
+                  <Check className="w-4 h-4" />
                 )}
-                <span>Confirmar Pago</span>
+                <span>Finalizar Cobro (${paymentSplits.reduce((acc, p) => acc + Number(p.monto || 0), 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })})</span>
               </button>
             </div>
           </div>

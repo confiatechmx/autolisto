@@ -42,7 +42,7 @@ export default function PosHistoryDashboard() {
       const { data, error } = await supabase
         .from('cotizaciones')
         .select(`
-          id, total, estatus, fecha,
+          id, total, estatus, fecha, metodos_pago,
           clientes ( nombre, telefono ),
           vehiculos ( marca, modelo, placas ),
           empleados ( nombre )
@@ -235,8 +235,23 @@ export default function PosHistoryDashboard() {
                         <div className="text-[10px] text-neutral-400">{sale.vehiculos?.placas}</div>
                       </td>
                       <td className="py-3 px-3 text-charcoal-light">{sale.empleados?.nombre || '-'}</td>
-                      <td className="py-3 px-3 font-bold font-mono">
-                        ${sale.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                      <td className="py-3 px-3 font-mono">
+                        <div className="font-bold text-slate-900">
+                          ${sale.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </div>
+                        {sale.metodos_pago && Array.isArray(sale.metodos_pago) && sale.metodos_pago.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1 font-sans">
+                            {sale.metodos_pago.map((m: any, idx: number) => (
+                              <span
+                                key={idx}
+                                className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-100 border border-slate-200 text-slate-700"
+                                title={m.detalle ? `${m.metodo} (${m.detalle})` : m.metodo}
+                              >
+                                {m.metodo}: ${Number(m.monto || 0).toLocaleString('es-MX')}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
